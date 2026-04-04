@@ -1,0 +1,15 @@
+# Swift Package Manager
+.build/
+.swiftpm/xcuserdata/
+
+# Xcode（若后续生成工程或工作区）
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+*.moved-aside
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

@@ -1,0 +1,174 @@
+import AppKit
+import Foundation
+import SwiftUI
+
+@MainActor
+final class AppModel: ObservableObject {
+    @Published var isRecording = false
+    @Published var silenceGapSeconds = 2
+    @Published var availableDays: [String] = []
+    @Published var selectedDay: String?
+    @Published var selectedTimeline: DailyTimeline?
+    @Published var permissionGranted = PermissionHelper.inputMonitoringGranted()
+    @Published var statusMessage = "记录关闭"
+
+    private let pasteboard = NSPasteboard.general
+    private let store = TimelineStore(silenceGapSeconds: 2)
+    private lazy var keyboardMonitor = KeyboardMonitor(
+        onKeyboardText: { [weak self] text, date in
+            guard let self else { return }
+            Task { await self.handleKeyboardText(text, at: date) }
+        },
+        onClipboardShortcut: { [weak self] action, date in
+            guard let self else { return }
+            Task { await self.handleClipboardShortcut(action, at: date) }
+        }
+    )
+
+    func start() {
+        keyboardMonitor.start()
+        refreshPermission()
+        Task {
+            await refreshDays()
+            await loadInitialSelection()
+        }
+    }
+
+    func stop() {
+        keyboardMonitor.stop()
+        Task {
+            try? await store.flush()
+        }
+    }
+
+    func toggleRecording(_ enabled: Bool) {
+        isRecording = enabled
+        statusMessage = enabled ? "记录开启中" : "记录关闭"
+
+        Task {
+            do {
+                try await store.setRecording(enabled)
+                if let selectedDay {
+                    await loadTimeline(for: selectedDay)
+                }
+            } catch {
+                statusMessage = "切换记录状态失败: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func updateSilenceGap(_ value: Int) {
+        silenceGapSeconds = value
+        Task {
+            do {
+                try await store.setSilenceGapSeconds(value)
+                if let selectedDay {
+                    await loadTimeline(for: selectedDay)
+                }
+            } catch {
+                statusMessage = "更新静默间隔失败: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func refreshPermission() {
+        permissionGranted = PermissionHelper.inputMonitoringGranted()
+    }
+
+    func requestPermission() {
+        PermissionHelper.requestInputMonitoring()
+        PermissionHelper.openPrivacySettings()
+        refreshPermission()
+    }
+
+    func selectDay(_ day: String) {
+        selectedDay = day
+        Task {
+            await loadTimeline(for: day)
+        }
+    }
+
+    func exportSelectedDay() {
+        guard let selectedDay else { return }
+
+        Task {
+            do {
+                let sourceURL = try await store.exportFileURL(for: selectedDay)
+                let panel = NSSavePanel()
+                panel.canCreateDirectories = true
+                panel.nameFieldStringValue = "\(selectedDay).json"
+                panel.allowedContentTypes = [.json]
+                if panel.runModal() == .OK, let targetURL = panel.url {
+                    if FileManager.default.fileExists(atPath: targetURL.path) {
+                        try FileManager.default.removeItem(at: targetURL)
+                    }
+                    try FileManager.default.copyItem(at: sourceURL, to: targetURL)
+                    statusMessage = "已导出 \(selectedDay).json"
+                }
+            } catch {
+                statusMessage = "导出失败: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func handleKeyboardText(_ text: String, at date: Date) async {
+        do {
+            let day = try await store.handleKeyboardText(text, at: date)
+            if let day {
+                await afterStoreMutation(for: day)
+            }
+        } catch {
+            statusMessage = "键盘记录失败: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleClipboardShortcut(_ action: ClipboardAction, at date: Date) async {
+        let delay: UInt64 = action == .copy ? 150_000_000 : 0
+        if delay > 0 {
+            try? await Task.sleep(nanoseconds: delay)
+        }
+
+        let content = pasteboard.string(forType: .string) ?? ""
+        let kind: TimelineItemKind = action == .copy ? .copy : .paste
+
+        do {
+            let day = try await store.handleClipboardEvent(kind: kind, text: content, at: date)
+            if let day {
+                await afterStoreMutation(for: day)
+            }
+        } catch {
+            statusMessage = "剪贴板记录失败: \(error.localizedDescription)"
+        }
+    }
+
+    private func afterStoreMutation(for day: String) async {
+        await refreshDays()
+        if selectedDay == nil || selectedDay == day {
+            selectedDay = day
+            await loadTimeline(for: day)
+        }
+    }
+
+    private func refreshDays() async {
+        do {
+            availableDays = try await store.allAvailableDays()
+        } catch {
+            statusMessage = "读取日期列表失败: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadInitialSelection() async {
+        if let first = availableDays.first {
+            selectedDay = first
+            await loadTimeline(for: first)
+        }
+    }
+
+    private func loadTimeline(for day: String) async {
+        do {
+            selectedTimeline = try await store.currentTimeline(for: day)
+        } catch {
+            statusMessage = "读取时间线失败: \(error.localizedDescription)"
+        }
+    }
+}
