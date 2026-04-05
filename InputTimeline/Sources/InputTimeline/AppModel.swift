@@ -26,8 +26,18 @@ final class AppModel: ObservableObject {
     )
 
     func start() {
-        keyboardMonitor.start()
         refreshPermission()
+        switch keyboardMonitor.start() {
+        case .started, .alreadyRunning:
+            if permissionGranted, statusMessage == "记录关闭" {
+                statusMessage = isRecording ? "记录开启中" : "记录关闭"
+            }
+        case .permissionDenied:
+            statusMessage = "需要输入监控权限"
+        case .tapCreateFailed:
+            statusMessage = "权限已授权，但监听未建立。若刚重建应用，请删除旧授权后重新授权。"
+        }
+
         Task {
             await refreshDays()
             await loadInitialSelection()

@@ -7,6 +7,13 @@ enum ClipboardAction {
 }
 
 final class KeyboardMonitor {
+    enum StartResult {
+        case started
+        case alreadyRunning
+        case permissionDenied
+        case tapCreateFailed
+    }
+
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private let callbackState: CallbackState
@@ -21,8 +28,11 @@ final class KeyboardMonitor {
         stop()
     }
 
-    func start() {
-        guard eventTap == nil else { return }
+    func start() -> StartResult {
+        guard eventTap == nil else { return .alreadyRunning }
+        guard PermissionHelper.inputMonitoringGranted() else {
+            return .permissionDenied
+        }
 
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
         let userInfo = Unmanaged.passRetained(callbackState).toOpaque()
@@ -31,7 +41,10 @@ final class KeyboardMonitor {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
+            // Passive monitoring should use a listen-only tap so the app only
+            // requires Input Monitoring and does not need Accessibility-style
+            // privileges to modify or suppress events.
+            options: .listenOnly,
             eventsOfInterest: mask,
             callback: { _, type, event, refcon in
                 guard type == .keyDown, let refcon else {
@@ -45,7 +58,8 @@ final class KeyboardMonitor {
             userInfo: userInfo
         ) else {
             Unmanaged<CallbackState>.fromOpaque(userInfo).release()
-            return
+            callbackStatePointer = nil
+            return .tapCreateFailed
         }
 
         eventTap = tap
@@ -55,6 +69,7 @@ final class KeyboardMonitor {
             CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
         CGEvent.tapEnable(tap: tap, enable: true)
+        return .started
     }
 
     func stop() {
