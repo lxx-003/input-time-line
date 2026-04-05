@@ -1,6 +1,7 @@
 # Swift Package Manager
 .build/
 .swiftpm/xcuserdata/
+dist/
 
 # Xcode（若后续生成工程或工作区）
 *.xcodeproj/xcuserdata/
