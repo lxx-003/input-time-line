@@ -10,6 +10,9 @@ DerivedData/
 *.xcuserstate
 *.moved-aside
 
+# Cursor
+.cursor/
+
 # macOS
 .DS_Store
 .AppleDouble
