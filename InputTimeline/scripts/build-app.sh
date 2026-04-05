@@ -21,6 +21,7 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$PROJECT_DIR/Support/Info.plist" "$APP_DIR/Contents/Info.plist"
+cp "$PROJECT_DIR/Support/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 cp "$BUILD_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
