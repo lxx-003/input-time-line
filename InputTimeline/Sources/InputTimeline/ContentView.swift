@@ -96,29 +96,46 @@ struct ContentView: View {
             }
 
             if let timeline = model.selectedTimeline {
-                Text("silenceGapSeconds: \(timeline.silenceGapSeconds)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("silenceGapSeconds: \(timeline.silenceGapSeconds)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("已加载 \(timeline.loadedCount)/\(timeline.totalCount) 条，按最近时间优先展示；每条仅预览前 \(AppModel.Paging.previewTextLimit) 个字符。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-                List(timeline.items) { item in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(item.kind.rawValue)
-                            .font(.headline)
-                        if let start = item.start, let end = item.end {
-                            Text("\(start) → \(end)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                List {
+                    ForEach(timeline.items) { item in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(item.kind.rawValue)
+                                .font(.headline)
+                            if let start = item.start, let end = item.end {
+                                Text("\(start) → \(end)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let at = item.at {
+                                Text(at)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(item.text.isEmpty ? "（空字符串）" : item.text)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        if let at = item.at {
-                            Text(at)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(item.text.isEmpty ? "（空字符串）" : item.text)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
+
+                    if timeline.hasMore {
+                        HStack {
+                            Spacer()
+                            Button("加载更早 10 条") {
+                                model.loadMoreItems()
+                            }
+                            Spacer()
+                        }
+                    }
                 }
             } else {
                 Spacer()

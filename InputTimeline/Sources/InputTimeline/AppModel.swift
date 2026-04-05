@@ -4,16 +4,22 @@ import SwiftUI
 
 @MainActor
 final class AppModel: ObservableObject {
+    enum Paging {
+        static let pageSize = 10
+        static let previewTextLimit = 300
+    }
+
     @Published var isRecording = false
     @Published var silenceGapSeconds = 2
     @Published var availableDays: [String] = []
     @Published var selectedDay: String?
-    @Published var selectedTimeline: DailyTimeline?
+    @Published var selectedTimeline: DailyTimelinePage?
     @Published var permissionGranted = PermissionHelper.inputMonitoringGranted()
     @Published var statusMessage = "记录关闭"
 
     private let pasteboard = NSPasteboard.general
     private let store = TimelineStore(silenceGapSeconds: 2)
+    private var currentPage = 0
     private lazy var keyboardMonitor = KeyboardMonitor(
         onKeyboardText: { [weak self] text, date in
             guard let self else { return }
@@ -59,7 +65,8 @@ final class AppModel: ObservableObject {
             do {
                 try await store.setRecording(enabled)
                 if let selectedDay {
-                    await loadTimeline(for: selectedDay)
+                    currentPage = 0
+                    await loadTimeline(for: selectedDay, reset: true)
                 }
             } catch {
                 statusMessage = "切换记录状态失败: \(error.localizedDescription)"
@@ -73,7 +80,8 @@ final class AppModel: ObservableObject {
             do {
                 try await store.setSilenceGapSeconds(value)
                 if let selectedDay {
-                    await loadTimeline(for: selectedDay)
+                    currentPage = 0
+                    await loadTimeline(for: selectedDay, reset: true)
                 }
             } catch {
                 statusMessage = "更新静默间隔失败: \(error.localizedDescription)"
@@ -93,8 +101,18 @@ final class AppModel: ObservableObject {
 
     func selectDay(_ day: String) {
         selectedDay = day
+        currentPage = 0
         Task {
-            await loadTimeline(for: day)
+            await loadTimeline(for: day, reset: true)
+        }
+    }
+
+    func loadMoreItems() {
+        guard let selectedDay, selectedTimeline?.hasMore == true else { return }
+
+        currentPage += 1
+        Task {
+            await loadTimeline(for: selectedDay, reset: false)
         }
     }
 
@@ -155,7 +173,8 @@ final class AppModel: ObservableObject {
         await refreshDays()
         if selectedDay == nil || selectedDay == day {
             selectedDay = day
-            await loadTimeline(for: day)
+            currentPage = 0
+            await loadTimeline(for: day, reset: true)
         }
     }
 
@@ -170,13 +189,33 @@ final class AppModel: ObservableObject {
     private func loadInitialSelection() async {
         if let first = availableDays.first {
             selectedDay = first
-            await loadTimeline(for: first)
+            currentPage = 0
+            await loadTimeline(for: first, reset: true)
         }
     }
 
-    private func loadTimeline(for day: String) async {
+    private func loadTimeline(for day: String, reset: Bool) async {
         do {
-            selectedTimeline = try await store.currentTimeline(for: day)
+            let page = try await store.timelinePage(
+                for: day,
+                page: currentPage,
+                pageSize: Paging.pageSize,
+                previewTextLimit: Paging.previewTextLimit
+            )
+
+            if reset || selectedTimeline?.date != day {
+                selectedTimeline = page
+            } else {
+                let mergedItems = (selectedTimeline?.items ?? []) + page.items
+                selectedTimeline = DailyTimelinePage(
+                    date: page.date,
+                    silenceGapSeconds: page.silenceGapSeconds,
+                    items: mergedItems,
+                    totalCount: page.totalCount,
+                    loadedCount: mergedItems.count,
+                    hasMore: page.hasMore
+                )
+            }
         } catch {
             statusMessage = "读取时间线失败: \(error.localizedDescription)"
         }

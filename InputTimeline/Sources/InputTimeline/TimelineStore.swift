@@ -1,6 +1,59 @@
 import Foundation
 
 actor TimelineStore {
+    private enum PagingContext {
+        static let pageKey = CodingUserInfoKey(rawValue: "timeline.page")!
+        static let pageSizeKey = CodingUserInfoKey(rawValue: "timeline.pageSize")!
+        static let previewTextLimitKey = CodingUserInfoKey(rawValue: "timeline.previewTextLimit")!
+    }
+
+    private struct TimelinePageSnapshot: Decodable {
+        let date: String
+        let silenceGapSeconds: Int
+        let items: [TimelineItem]
+        let totalCount: Int
+        let hasMore: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case date
+            case silenceGapSeconds
+            case items
+        }
+
+        init(from decoder: Decoder) throws {
+            let page = decoder.userInfo[PagingContext.pageKey] as? Int ?? 0
+            let pageSize = decoder.userInfo[PagingContext.pageSizeKey] as? Int ?? 10
+            let previewTextLimit = decoder.userInfo[PagingContext.previewTextLimitKey] as? Int ?? 300
+            let bufferedCount = max(pageSize * (page + 1), pageSize)
+
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            date = try container.decode(String.self, forKey: .date)
+            silenceGapSeconds = try container.decode(Int.self, forKey: .silenceGapSeconds)
+
+            var itemsContainer = try container.nestedUnkeyedContainer(forKey: .items)
+            var recentItems: [TimelineItem] = []
+            recentItems.reserveCapacity(bufferedCount)
+
+            var totalCount = 0
+            while !itemsContainer.isAtEnd {
+                var item = try itemsContainer.decode(TimelineItem.self)
+                item.text = TimelineStore.previewText(item.text, limit: previewTextLimit)
+                recentItems.append(item)
+                totalCount += 1
+
+                if recentItems.count > bufferedCount {
+                    recentItems.removeFirst(recentItems.count - bufferedCount)
+                }
+            }
+
+            let endIndex = max(0, recentItems.count - (page * pageSize))
+            let startIndex = max(0, endIndex - pageSize)
+            items = Array(recentItems[startIndex..<endIndex].reversed())
+            self.totalCount = totalCount
+            hasMore = totalCount > ((page + 1) * pageSize)
+        }
+    }
+
     private let fileManager = FileManager.default
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -90,18 +143,45 @@ actor TimelineStore {
         return currentDay
     }
 
-    func currentTimeline(for day: String) async throws -> DailyTimeline {
+    func timelinePage(for day: String, page: Int, pageSize: Int, previewTextLimit: Int) async throws -> DailyTimelinePage {
         if day == currentDay {
-            return makeDailyTimeline(flushedItemsForPreview())
+            return makeTimelinePage(
+                day: day,
+                silenceGapSeconds: silenceGapSeconds,
+                sourceItems: flushedItemsForPreview(),
+                page: page,
+                pageSize: pageSize,
+                previewTextLimit: previewTextLimit
+            )
         }
 
         let url = try fileURL(for: day)
         guard fileManager.fileExists(atPath: url.path) else {
-            return DailyTimeline(date: day, silenceGapSeconds: silenceGapSeconds, items: [])
+            return DailyTimelinePage(
+                date: day,
+                silenceGapSeconds: silenceGapSeconds,
+                items: [],
+                totalCount: 0,
+                loadedCount: 0,
+                hasMore: false
+            )
         }
 
         let data = try Data(contentsOf: url)
-        return try decoder.decode(DailyTimeline.self, from: data)
+        let pageDecoder = JSONDecoder()
+        pageDecoder.userInfo[PagingContext.pageKey] = page
+        pageDecoder.userInfo[PagingContext.pageSizeKey] = pageSize
+        pageDecoder.userInfo[PagingContext.previewTextLimitKey] = previewTextLimit
+        let snapshot = try pageDecoder.decode(TimelinePageSnapshot.self, from: data)
+
+        return DailyTimelinePage(
+            date: snapshot.date,
+            silenceGapSeconds: snapshot.silenceGapSeconds,
+            items: snapshot.items,
+            totalCount: snapshot.totalCount,
+            loadedCount: min(snapshot.totalCount, (page + 1) * pageSize),
+            hasMore: snapshot.hasMore
+        )
     }
 
     func allAvailableDays() throws -> [String] {
@@ -185,6 +265,34 @@ actor TimelineStore {
         )
     }
 
+    private func makeTimelinePage(
+        day: String,
+        silenceGapSeconds: Int,
+        sourceItems: [TimelineItem],
+        page: Int,
+        pageSize: Int,
+        previewTextLimit: Int
+    ) -> DailyTimelinePage {
+        let endIndex = max(0, sourceItems.count - (page * pageSize))
+        let startIndex = max(0, endIndex - pageSize)
+        let pageItems = sourceItems[startIndex..<endIndex]
+            .reversed()
+            .map { item in
+                var previewItem = item
+                previewItem.text = Self.previewText(item.text, limit: previewTextLimit)
+                return previewItem
+            }
+
+        return DailyTimelinePage(
+            date: day,
+            silenceGapSeconds: silenceGapSeconds,
+            items: Array(pageItems),
+            totalCount: sourceItems.count,
+            loadedCount: min(sourceItems.count, (page + 1) * pageSize),
+            hasMore: sourceItems.count > ((page + 1) * pageSize)
+        )
+    }
+
     private func persistCurrentDay() throws {
         guard let currentDay else { return }
         let timeline = DailyTimeline(
@@ -213,5 +321,10 @@ actor TimelineStore {
 
     private func fileURL(for day: String) throws -> URL {
         try baseDirectory().appendingPathComponent("\(day).json")
+    }
+
+    private static func previewText(_ text: String, limit: Int) -> String {
+        guard limit > 0, text.count > limit else { return text }
+        return String(text.prefix(limit)) + "..."
     }
 }

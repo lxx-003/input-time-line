@@ -38,6 +38,15 @@ struct DailyTimeline: Codable, Hashable {
     let items: [TimelineItem]
 }
 
+struct DailyTimelinePage: Hashable {
+    let date: String
+    let silenceGapSeconds: Int
+    let items: [TimelineItem]
+    let totalCount: Int
+    let loadedCount: Int
+    let hasMore: Bool
+}
+
 struct KeyboardSegment {
     var start: Date
     var end: Date
