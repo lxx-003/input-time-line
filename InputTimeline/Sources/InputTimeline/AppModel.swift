@@ -21,9 +21,9 @@ final class AppModel: ObservableObject {
     private let store = TimelineStore(silenceGapSeconds: 2)
     private var currentPage = 0
     private lazy var keyboardMonitor = KeyboardMonitor(
-        onKeyboardText: { [weak self] text, date in
+        onKeyboardText: { [weak self] text, appName, date in
             guard let self else { return }
-            Task { await self.handleKeyboardText(text, at: date) }
+            Task { await self.handleKeyboardText(text, appName: appName, at: date) }
         },
         onClipboardShortcut: { [weak self] action, date in
             guard let self else { return }
@@ -139,9 +139,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func handleKeyboardText(_ text: String, at date: Date) async {
+    private func handleKeyboardText(_ text: String, appName: String?, at date: Date) async {
         do {
-            let day = try await store.handleKeyboardText(text, at: date)
+            let day = try await store.handleKeyboardText(text, appName: appName, at: date)
             if let day {
                 await afterStoreMutation(for: day)
             }

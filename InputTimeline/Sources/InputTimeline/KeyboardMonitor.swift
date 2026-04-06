@@ -1,4 +1,5 @@
 import ApplicationServices
+import AppKit
 import Foundation
 
 enum ClipboardAction {
@@ -19,7 +20,7 @@ final class KeyboardMonitor {
     private let callbackState: CallbackState
     private var callbackStatePointer: UnsafeMutableRawPointer?
 
-    init(onKeyboardText: @escaping @Sendable (String, Date) -> Void,
+    init(onKeyboardText: @escaping @Sendable (String, String?, Date) -> Void,
          onClipboardShortcut: @escaping @Sendable (ClipboardAction, Date) -> Void) {
         self.callbackState = CallbackState(onKeyboardText: onKeyboardText, onClipboardShortcut: onClipboardShortcut)
     }
@@ -89,10 +90,10 @@ final class KeyboardMonitor {
 }
 
 private final class CallbackState {
-    private let onKeyboardText: @Sendable (String, Date) -> Void
+    private let onKeyboardText: @Sendable (String, String?, Date) -> Void
     private let onClipboardShortcut: @Sendable (ClipboardAction, Date) -> Void
 
-    init(onKeyboardText: @escaping @Sendable (String, Date) -> Void,
+    init(onKeyboardText: @escaping @Sendable (String, String?, Date) -> Void,
          onClipboardShortcut: @escaping @Sendable (ClipboardAction, Date) -> Void) {
         self.onKeyboardText = onKeyboardText
         self.onClipboardShortcut = onClipboardShortcut
@@ -129,6 +130,7 @@ private final class CallbackState {
             .replacingOccurrences(of: "\u{7F}", with: "")
         guard !text.isEmpty else { return }
 
-        onKeyboardText(text, timestamp)
+        let appName = NSWorkspace.shared.frontmostApplication?.localizedName
+        onKeyboardText(text, appName, timestamp)
     }
 }

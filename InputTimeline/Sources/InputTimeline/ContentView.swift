@@ -110,6 +110,10 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(item.kind.rawValue)
                                 .font(.headline)
+                            if let appName = item.appName, !appName.isEmpty {
+                                Text(appName)
+                                    .font(.subheadline)
+                            }
                             if let start = item.start, let end = item.end {
                                 Text("\(start) → \(end)")
                                     .font(.caption)

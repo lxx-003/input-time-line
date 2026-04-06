@@ -9,6 +9,7 @@
 ## 功能特性
 
 - **键盘输入记录** — 捕获按键，按静默间隔（默认 2s，可调 1–10s）自动合并为连续输入段
+- **应用上下文** — 键盘输入段额外记录前台应用名称；切换应用时自动拆段
 - **复制 / 粘贴捕获** — 识别 ⌘C / ⌘V 并读取剪贴板文本
 - **按日存储** — 每天一个 JSON：`~/Library/Application Support/InputTimeline/<YYYY-MM-DD>.json`
 - **历史浏览** — 侧栏选择日期，查看当天时间线
@@ -44,7 +45,7 @@ swift build -c release
 
 切换 debug 构建：`CONFIGURATION=debug ./scripts/build-app.sh`
 
-> **首次运行**需在「系统设置 → 隐私与安全性 → 输入监控」中授权 InputTimeline。
+> **首次运行**需在「系统设置 → 隐私与安全性 → 输入监控」中授权 InputTimeline。记录前台应用名称使用 `NSWorkspace` 读取当前活动应用，通常不需要额外权限。
 
 ## 项目结构
 
@@ -79,7 +80,7 @@ InputTimeline/
   "date": "2026-04-04",
   "silenceGapSeconds": 2,
   "items": [
-    { "kind": "键盘", "start": "2026-04-04 10:00:00", "end": "2026-04-04 10:00:05", "text": "hello" },
+    { "kind": "键盘", "start": "2026-04-04 10:00:00", "end": "2026-04-04 10:00:05", "appName": "Safari", "text": "hello" },
     { "kind": "复制", "at": "2026-04-04 10:01:00", "text": "copied text" },
     { "kind": "粘贴", "at": "2026-04-04 10:01:03", "text": "pasted text" }
   ]
@@ -91,6 +92,7 @@ InputTimeline/
 | `kind` | 事件类型：`键盘` / `复制` / `粘贴` |
 | `start` / `end` | 键盘输入的起止时间 |
 | `at` | 复制/粘贴的时间点 |
+| `appName` | 键盘输入发生时的前台应用名称，仅 `kind = 键盘` 时通常存在 |
 | `text` | 原始文本（键盘输入可能包含 `\b` `\r` 等控制字符） |
 
 ## AI 技能：analyze-input-timeline

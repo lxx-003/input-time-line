@@ -103,7 +103,7 @@ actor TimelineStore {
         }
     }
 
-    func handleKeyboardText(_ text: String, at date: Date) async throws -> String? {
+    func handleKeyboardText(_ text: String, appName: String?, at date: Date) async throws -> String? {
         guard isRecording else { return nil }
         try rotateDayIfNeeded(for: date)
 
@@ -111,16 +111,16 @@ actor TimelineStore {
 
         if var pending = pendingKeyboardSegment {
             let gap = date.timeIntervalSince(pending.end)
-            if gap <= Double(silenceGapSeconds) {
+            if gap <= Double(silenceGapSeconds), pending.appName == appName {
                 pending.end = date
                 pending.text += text
                 pendingKeyboardSegment = pending
             } else {
                 appendKeyboardSegment(pending)
-                pendingKeyboardSegment = KeyboardSegment(start: date, end: date, text: text)
+                pendingKeyboardSegment = KeyboardSegment(start: date, end: date, appName: appName, text: text)
             }
         } else {
-            pendingKeyboardSegment = KeyboardSegment(start: date, end: date, text: text)
+            pendingKeyboardSegment = KeyboardSegment(start: date, end: date, appName: appName, text: text)
         }
 
         try persistCurrentDay()
@@ -231,6 +231,7 @@ actor TimelineStore {
                 kind: .keyboard,
                 start: timestampFormatter.string(from: segment.start),
                 end: timestampFormatter.string(from: segment.end),
+                appName: segment.appName,
                 text: segment.text
             )
         )
@@ -251,6 +252,7 @@ actor TimelineStore {
                 kind: .keyboard,
                 start: timestampFormatter.string(from: pendingKeyboardSegment.start),
                 end: timestampFormatter.string(from: pendingKeyboardSegment.end),
+                appName: pendingKeyboardSegment.appName,
                 text: pendingKeyboardSegment.text
             )
         )
