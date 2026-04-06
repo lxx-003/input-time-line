@@ -1,0 +1,3 @@
+# Binary files — skip diff and merge
+*.icns binary
+*.png  binary

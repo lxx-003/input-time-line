@@ -1,19 +1,22 @@
 # Swift Package Manager
 .build/
-.swiftpm/xcuserdata/
+.swiftpm/
 dist/
 
-# Xcode（若后续生成工程或工作区）
+# Xcode
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 DerivedData/
 *.xcuserstate
 *.moved-aside
 
-# Cursor
-.cursor/
-
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Cursor / IDE
+.cursorignore

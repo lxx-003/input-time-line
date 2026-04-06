@@ -33,7 +33,7 @@ description: 分析指定日期的 InputTimeline 输入记录数据，读取 ~/L
 
 ### 第一步：确认日期并读取文件
 
-用户必须提供具体日期（格式 `YYYY-MM-DD`）。使用 Shell 工具读取文件：
+用户必须提供具体日期（格式 `YYYY-MM-DD`）。在终端中读取文件：
 
 ```bash
 cat ~/Library/Application\ Support/InputTimeline/<YYYY-MM-DD>.json
@@ -47,10 +47,10 @@ ls ~/Library/Application\ Support/InputTimeline/
 
 ### 第二步：运行解析脚本
 
-使用 Shell 工具执行脚本，脚本会自动完成控制字符替换和文本截断：
+在终端执行本技能包内的解析脚本（路径为与 `SKILL.md` 同目录下的 `scripts/parse_timeline.py`；下文用 `$SKILL_ROOT` 表示该技能根目录）。脚本会自动完成控制字符替换和文本截断：
 
 ```bash
-python3 ~/.cursor/skills/analyze-input-timeline/scripts/parse_timeline.py <YYYY-MM-DD>
+python3 "$SKILL_ROOT/scripts/parse_timeline.py" <YYYY-MM-DD>
 ```
 
 可选参数：
@@ -60,10 +60,10 @@ python3 ~/.cursor/skills/analyze-input-timeline/scripts/parse_timeline.py <YYYY-
 示例：
 ```bash
 # 默认截断规则
-python3 ~/.cursor/skills/analyze-input-timeline/scripts/parse_timeline.py 2026-04-04
+python3 "$SKILL_ROOT/scripts/parse_timeline.py" 2026-04-04
 
 # 自定义截断阈值
-python3 ~/.cursor/skills/analyze-input-timeline/scripts/parse_timeline.py 2026-04-04 --max-chars 300 --keep 100
+python3 "$SKILL_ROOT/scripts/parse_timeline.py" 2026-04-04 --max-chars 300 --keep 100
 ```
 
 脚本处理逻辑：
