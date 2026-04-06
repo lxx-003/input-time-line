@@ -20,3 +20,6 @@ DerivedData/
 
 # Cursor / IDE
 .cursorignore
+
+# 本地安装备忘（含本机路径）
+本地安装到应用程序.md
