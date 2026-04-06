@@ -42,12 +42,33 @@ description: 分析指定日期的 InputTimeline 输入记录数据，读取 ~/L
 ls ~/Library/Application\ Support/InputTimeline/
 ```
 
-### 第二步：检查数据量（决定是否分块）
+### 第二步：预处理 + 检查数据量（决定是否分块）
 
 运行分块检查脚本（`$SKILL_ROOT` 为本技能根目录）：
 
 ```bash
 python3 "$SKILL_ROOT/scripts/chunk_timeline.py" <YYYY-MM-DD>
+```
+
+此脚本是整个流程的**入口**，执行顺序：
+1. 加载原始数据
+2. **预处理**（`preprocess_items`）：截断所有超长文本
+3. 基于已截断数据计算统计和分块判断
+
+输出 JSON 包含 `stats` 字段（基于预处理后数据）：
+
+```json
+{
+  "stats": {
+    "total_items": 520,
+    "keyboard": 380,
+    "copy": 60,
+    "paste": 80,
+    "active_range": "2026-04-04 09:12 — 2026-04-04 23:45",
+    "app_distribution": { "Cursor": 210, "Safari": 95, "..." : "..." }
+  },
+  "needs_chunking": false
+}
 ```
 
 查看输出中的 `needs_chunking` 字段：
@@ -135,7 +156,8 @@ python3 "$SKILL_ROOT/scripts/parse_timeline.py" <YYYY-MM-DD>
 ## 注意事项
 
 - 日期**必须**由用户明确指定，不得自行猜测或默认今天
-- 超长文本截断在数据加载后立即执行（预处理阶段），分块估算和输出展示均基于已截断的数据
+- 超长文本截断在 `chunk_timeline.py` 的 `preprocess_items` 中最先执行，后续所有统计、分块估算、输出展示均基于已截断的数据
+- 分块文件带有 `_preprocessed: true` 标记，`parse_timeline.py` 读取后不会重复截断
 - 键盘输入文本通常包含控制字符，展示前需替换（脚本已自动处理）
 - 重复的粘贴内容可合并展示，注明次数
 - 对用户的活动进行有价值的推断，例如"在 14:00-16:00 期间大量复制代码片段，可能在进行代码开发"

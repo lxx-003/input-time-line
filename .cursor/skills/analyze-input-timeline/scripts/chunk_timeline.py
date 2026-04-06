@@ -43,6 +43,31 @@ def item_time(item: dict) -> str:
     return item.get("at") or item.get("start") or item.get("end") or ""
 
 
+def compute_stats(items: list) -> dict:
+    """基于预处理后的数据计算统计信息"""
+    kb = [i for i in items if i.get("kind") == "键盘"]
+    cp = [i for i in items if i.get("kind") == "复制"]
+    pa = [i for i in items if i.get("kind") == "粘贴"]
+
+    app_counter: dict = {}
+    for i in items:
+        app = i.get("appName") or "（未知）"
+        app_counter[app] = app_counter.get(app, 0) + 1
+
+    all_times = sorted(
+        filter(None, (item_time(i) for i in items))
+    )
+
+    return {
+        "total_items": len(items),
+        "keyboard": len(kb),
+        "copy": len(cp),
+        "paste": len(pa),
+        "active_range": f"{all_times[0][:16]} — {all_times[-1][:16]}" if all_times else "—",
+        "app_distribution": dict(sorted(app_counter.items(), key=lambda x: -x[1])),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="检查并拆分 InputTimeline 数据")
     parser.add_argument("date", help="日期，格式 YYYY-MM-DD")
@@ -81,15 +106,19 @@ def main():
         data = json.load(f)
 
     items = data.get("items", [])
+
+    # 预处理：截断超长文本（所有后续统计和输出均基于此）
     preprocess_items(items, args.max_chars, args.keep)
+
     estimated = estimate_size(items)
+    stats = compute_stats(items)
 
     result: dict = {
         "date": args.date,
-        "total_items": len(items),
         "estimated_chars": estimated,
         "threshold": args.threshold,
         "needs_chunking": estimated > args.threshold,
+        "stats": stats,
     }
 
     if not result["needs_chunking"]:
@@ -110,7 +139,6 @@ def main():
         if not chunk_items:
             continue
 
-        # 计算时间范围
         times = sorted(filter(None, (item_time(it) for it in chunk_items)))
         time_range = f"{times[0][:16]} — {times[-1][:16]}" if times else "—"
 
@@ -119,6 +147,7 @@ def main():
             "silenceGapSeconds": data.get("silenceGapSeconds", 30),
             "items": chunk_items,
             "_segment": {"index": i + 1, "total": n, "time_range": time_range},
+            "_preprocessed": True,
         }
 
         out_path = os.path.join(tmp_dir, f"chunk_{i + 1}_of_{n}.json")

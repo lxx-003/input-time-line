@@ -36,6 +36,15 @@ def truncate(text: str, max_chars: int, keep: int) -> str:
     return f"{text[:keep]}…（共 {len(text)} 字符）…{text[-keep:]}"
 
 
+def preprocess_items(items: list, max_chars: int, keep: int) -> list:
+    """预处理：截断超长文本，与 chunk_timeline.py 保持一致"""
+    for item in items:
+        text = item.get("text", "")
+        if text:
+            item["text"] = truncate(text, max_chars, keep)
+    return items
+
+
 def fmt_time(ts: str) -> str:
     """取时间戳中的 HH:MM 部分"""
     try:
@@ -88,10 +97,10 @@ def main():
         data = json.load(f)
 
     items = data.get("items", [])
-    for item in items:
-        text = item.get("text", "")
-        if text:
-            item["text"] = truncate(text, args.max_chars, args.keep)
+
+    # 仅在数据未被 chunk_timeline.py 预处理过时才截断
+    if not data.get("_preprocessed"):
+        preprocess_items(items, args.max_chars, args.keep)
 
     date = data.get("date", args.date)
 
