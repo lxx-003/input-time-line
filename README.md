@@ -16,6 +16,7 @@
 - **JSON 导出** — NSSavePanel 导出所选日期的记录
 - **权限引导** — 检测 Input Monitoring 授权状态，一键跳转系统设置
 - **开机自启动** — 通过系统登录项在登录后自动启动（侧栏开关，默认开启）
+- **默认开启记录** — 首次启动即开始采集，可在侧栏关闭
 
 ## 技术栈
 
@@ -60,6 +61,7 @@ InputTimeline/
 │   ├── KeyboardMonitor.swift          # CGEvent 输入监听
 │   ├── PermissionHelper.swift         # 权限检测与请求
 │   ├── LaunchAtLoginManager.swift     # 登录项 / 开机自启动
+│   ├── RecordingPreference.swift      # 记录开关偏好（默认开启）
 │   ├── TimelineModels.swift           # 数据模型
 │   └── TimelineStore.swift            # 按日落盘与持久化
 ├── Support/

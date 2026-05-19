@@ -61,13 +61,14 @@ actor TimelineStore {
     private let timestampFormatter: DateFormatter
 
     private var silenceGapSeconds: Int
-    private var isRecording = false
+    private var isRecording: Bool
     private var currentDay: String?
     private var items: [TimelineItem] = []
     private var pendingKeyboardSegment: KeyboardSegment?
 
-    init(silenceGapSeconds: Int) {
+    init(silenceGapSeconds: Int, isRecording: Bool = RecordingPreference.enabled) {
         self.silenceGapSeconds = silenceGapSeconds
+        self.isRecording = isRecording
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]

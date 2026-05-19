@@ -9,14 +9,14 @@ final class AppModel: ObservableObject {
         static let previewTextLimit = 300
     }
 
-    @Published var isRecording = false
+    @Published var isRecording = RecordingPreference.enabled
     @Published var silenceGapSeconds = 2
     @Published var availableDays: [String] = []
     @Published var selectedDay: String?
     @Published var selectedTimeline: DailyTimelinePage?
     @Published var permissionGranted = PermissionHelper.inputMonitoringGranted()
     @Published var launchAtLogin = LaunchAtLoginManager.preferenceEnabled
-    @Published var statusMessage = "记录关闭"
+    @Published var statusMessage = RecordingPreference.enabled ? "记录开启中" : "记录关闭"
 
     private let pasteboard = NSPasteboard.general
     private let store = TimelineStore(silenceGapSeconds: 2)
@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
 
     func start() {
         syncLaunchAtLogin()
+        syncRecording()
         refreshPermission()
         switch keyboardMonitor.start() {
         case .started, .alreadyRunning:
@@ -59,7 +60,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func syncRecording() {
+        let enabled = RecordingPreference.enabled
+        isRecording = enabled
+        statusMessage = enabled ? "记录开启中" : "记录关闭"
+        Task {
+            try? await store.setRecording(enabled)
+        }
+    }
+
     func toggleRecording(_ enabled: Bool) {
+        RecordingPreference.enabled = enabled
         isRecording = enabled
         statusMessage = enabled ? "记录开启中" : "记录关闭"
 
