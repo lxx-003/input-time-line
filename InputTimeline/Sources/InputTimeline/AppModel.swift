@@ -15,6 +15,7 @@ final class AppModel: ObservableObject {
     @Published var selectedDay: String?
     @Published var selectedTimeline: DailyTimelinePage?
     @Published var permissionGranted = PermissionHelper.inputMonitoringGranted()
+    @Published var launchAtLogin = LaunchAtLoginManager.preferenceEnabled
     @Published var statusMessage = "记录关闭"
 
     private let pasteboard = NSPasteboard.general
@@ -32,6 +33,7 @@ final class AppModel: ObservableObject {
     )
 
     func start() {
+        syncLaunchAtLogin()
         refreshPermission()
         switch keyboardMonitor.start() {
         case .started, .alreadyRunning:
@@ -91,6 +93,24 @@ final class AppModel: ObservableObject {
 
     func refreshPermission() {
         permissionGranted = PermissionHelper.inputMonitoringGranted()
+    }
+
+    func syncLaunchAtLogin() {
+        LaunchAtLoginManager.syncWithPreference()
+        launchAtLogin = LaunchAtLoginManager.isRegistered
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        launchAtLogin = enabled
+        if let error = LaunchAtLoginManager.setEnabled(enabled) {
+            launchAtLogin = LaunchAtLoginManager.isRegistered
+            statusMessage = "登录项设置失败: \(error)"
+            return
+        }
+        launchAtLogin = LaunchAtLoginManager.isRegistered
+        if enabled && !launchAtLogin {
+            statusMessage = "请在「系统设置 → 通用 → 登录项」中允许 InputTimeline 开机启动"
+        }
     }
 
     func requestPermission() {

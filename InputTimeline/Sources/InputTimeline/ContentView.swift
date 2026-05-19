@@ -14,68 +14,74 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Toggle("开启记录", isOn: Binding(
-                get: { model.isRecording },
-                set: { model.toggleRecording($0) }
-            ))
-            .toggleStyle(.switch)
+        List(selection: Binding(
+            get: { model.selectedDay },
+            set: { day in
+                if let day {
+                    model.selectDay(day)
+                }
+            }
+        )) {
+            Section {
+                Toggle("开启记录", isOn: Binding(
+                    get: { model.isRecording },
+                    set: { model.toggleRecording($0) }
+                ))
+                Toggle("开机自动启动", isOn: Binding(
+                    get: { model.launchAtLogin },
+                    set: { model.setLaunchAtLogin($0) }
+                ))
+            }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("键盘静默分段")
-                    .font(.headline)
+            Section {
                 Stepper(value: Binding(
                     get: { model.silenceGapSeconds },
                     set: { model.updateSilenceGap($0) }
                 ), in: 1 ... 10) {
                     Text("\(model.silenceGapSeconds) 秒")
                 }
+            } header: {
+                Text("键盘静默分段")
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
+            Section {
+                Label {
+                    Text(model.permissionGranted ? "输入监控权限已就绪" : "需要输入监控权限")
+                } icon: {
                     Circle()
                         .fill(model.permissionGranted ? .green : .orange)
-                        .frame(width: 10, height: 10)
-                    Text(model.permissionGranted ? "输入监控权限已就绪" : "需要输入监控权限")
-                        .font(.subheadline)
+                        .frame(width: 8, height: 8)
                 }
                 Button("请求权限并打开系统设置") {
                     model.requestPermission()
                 }
-                Text("说明：仅在记录开启时采集。密码框等安全输入域通常不会被系统提供内容。")
+                Text("仅在记录开启时采集；密码框等安全输入域通常不会被系统提供内容。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text("登录项需安装到「应用程序」；若未生效，请在系统设置 → 通用 → 登录项中允许。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("说明")
             }
 
-            Divider()
-
-            HStack {
-                Text("历史日期")
-                    .font(.headline)
-                Spacer()
-                Button("刷新") {
-                    model.start()
-                }
-                .buttonStyle(.borderless)
-            }
-
-            List(selection: Binding(
-                get: { model.selectedDay },
-                set: { day in
-                    if let day {
-                        model.selectDay(day)
-                    }
-                }
-            )) {
+            Section {
                 ForEach(model.availableDays, id: \.self) { day in
                     Text(day)
                         .tag(day)
                 }
+            } header: {
+                HStack {
+                    Text("历史日期")
+                    Spacer()
+                    Button("刷新") {
+                        model.start()
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
         }
-        .padding(20)
+        .listStyle(.sidebar)
     }
 
     private var detail: some View {

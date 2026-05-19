@@ -15,6 +15,7 @@
 - **历史浏览** — 侧栏选择日期，查看当天时间线
 - **JSON 导出** — NSSavePanel 导出所选日期的记录
 - **权限引导** — 检测 Input Monitoring 授权状态，一键跳转系统设置
+- **开机自启动** — 通过系统登录项在登录后自动启动（侧栏开关，默认开启）
 
 ## 技术栈
 
@@ -58,6 +59,7 @@ InputTimeline/
 │   ├── ContentView.swift              # SwiftUI 界面
 │   ├── KeyboardMonitor.swift          # CGEvent 输入监听
 │   ├── PermissionHelper.swift         # 权限检测与请求
+│   ├── LaunchAtLoginManager.swift     # 登录项 / 开机自启动
 │   ├── TimelineModels.swift           # 数据模型
 │   └── TimelineStore.swift            # 按日落盘与持久化
 ├── Support/
