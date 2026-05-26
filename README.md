@@ -28,6 +28,10 @@
 | UI | SwiftUI + AppKit |
 | 输入监听 | `ApplicationServices` CGEvent listen-only tap |
 
+## 系统架构
+
+![InputTimeline 系统架构](docs/inputtimeline-architecture.png)
+
 ## 快速开始
 
 ```bash
