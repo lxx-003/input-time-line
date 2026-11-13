@@ -15,15 +15,12 @@ private struct ThinScrollbarConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async {
-            context.coordinator.attach(from: view)
+            context.coordinator.attachIfNeeded(from: view)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            context.coordinator.attach(from: nsView)
-        }
     }
 
     @MainActor
@@ -37,7 +34,7 @@ private struct ThinScrollbarConfigurator: NSViewRepresentable {
             }
         }
 
-        func attach(from view: NSView) {
+        func attachIfNeeded(from view: NSView) {
             if scrollView == nil {
                 scrollView = resolveScrollView(from: view)
             }
@@ -56,14 +53,25 @@ private struct ThinScrollbarConfigurator: NSViewRepresentable {
             }
         }
 
+        func reapplyIfAttached() {
+            guard scrollView != nil else { return }
+            applyStyle()
+        }
+
         private func applyStyle() {
             guard let scrollView else { return }
             if scrollView.scrollerStyle != .overlay {
                 scrollView.scrollerStyle = .overlay
             }
-            scrollView.autohidesScrollers = true
-            scrollView.verticalScroller?.controlSize = .mini
-            scrollView.horizontalScroller?.controlSize = .mini
+            if !scrollView.autohidesScrollers {
+                scrollView.autohidesScrollers = true
+            }
+            if scrollView.verticalScroller?.controlSize != .mini {
+                scrollView.verticalScroller?.controlSize = .mini
+            }
+            if scrollView.horizontalScroller?.controlSize != .mini {
+                scrollView.horizontalScroller?.controlSize = .mini
+            }
         }
 
         private func resolveScrollView(from view: NSView) -> NSScrollView? {

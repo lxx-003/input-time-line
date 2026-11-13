@@ -6,6 +6,7 @@ actor TimelineStore {
         static let pageSizeKey = CodingUserInfoKey(rawValue: "timeline.pageSize")!
         static let previewTextLimitKey = CodingUserInfoKey(rawValue: "timeline.previewTextLimit")!
         static let kindFilterKey = CodingUserInfoKey(rawValue: "timeline.kindFilter")!
+        static let appFilterKey = CodingUserInfoKey(rawValue: "timeline.appFilter")!
         static let searchQueryKey = CodingUserInfoKey(rawValue: "timeline.searchQuery")!
     }
 
@@ -16,6 +17,7 @@ actor TimelineStore {
         let totalCount: Int
         let dayTotalCount: Int
         let kindCounts: [TimelineItemKind: Int]
+        let appCounts: [String: Int]
         let hasMore: Bool
 
         private enum CodingKeys: String, CodingKey {
@@ -30,6 +32,8 @@ actor TimelineStore {
             let previewTextLimit = decoder.userInfo[PagingContext.previewTextLimitKey] as? Int ?? 400
             let kindFilter = (decoder.userInfo[PagingContext.kindFilterKey] as? String)
                 .flatMap(TimelineItemKind.init(rawValue:))
+            let appFilter = (decoder.userInfo[PagingContext.appFilterKey] as? String)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             let searchQuery = (decoder.userInfo[PagingContext.searchQueryKey] as? String ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let bufferedCount = max(pageSize * (page + 1), pageSize)
@@ -45,13 +49,22 @@ actor TimelineStore {
             var dayTotalCount = 0
             var filteredTotalCount = 0
             var kindCounts: [TimelineItemKind: Int] = [:]
+            var appCounts: [String: Int] = [:]
 
             while !itemsContainer.isAtEnd {
                 let item = try itemsContainer.decode(TimelineItem.self)
                 dayTotalCount += 1
                 kindCounts[item.kind, default: 0] += 1
+                if let app = item.appName?.trimmingCharacters(in: .whitespacesAndNewlines), !app.isEmpty {
+                    appCounts[app, default: 0] += 1
+                }
 
-                guard TimelineStore.matches(item, kindFilter: kindFilter, searchQuery: searchQuery) else {
+                guard TimelineStore.matches(
+                    item,
+                    kindFilter: kindFilter,
+                    appFilter: appFilter,
+                    searchQuery: searchQuery
+                ) else {
                     continue
                 }
 
@@ -69,6 +82,7 @@ actor TimelineStore {
             self.totalCount = filteredTotalCount
             self.dayTotalCount = dayTotalCount
             self.kindCounts = kindCounts
+            self.appCounts = appCounts
             hasMore = filteredTotalCount > ((page + 1) * pageSize)
         }
     }
@@ -85,7 +99,10 @@ actor TimelineStore {
     private var items: [TimelineItem] = []
     private var pendingKeyboardSegment: KeyboardSegment?
 
-    init(silenceGapSeconds: Int, isRecording: Bool = RecordingPreference.enabled) {
+    init(
+        silenceGapSeconds: Int = RecordingPreference.silenceGapSeconds,
+        isRecording: Bool = RecordingPreference.enabled
+    ) {
         self.silenceGapSeconds = silenceGapSeconds
         self.isRecording = isRecording
 
@@ -147,7 +164,7 @@ actor TimelineStore {
         return currentDay
     }
 
-    func handleClipboardEvent(kind: TimelineItemKind, text: String, at date: Date) async throws -> String? {
+    func handleClipboardEvent(kind: TimelineItemKind, appName: String?, text: String, at date: Date) async throws -> String? {
         guard isRecording else { return nil }
         try rotateDayIfNeeded(for: date)
         try flushPendingKeyboardSegment()
@@ -156,6 +173,7 @@ actor TimelineStore {
             TimelineItem(
                 kind: kind,
                 at: timestampFormatter.string(from: date),
+                appName: appName,
                 text: text
             )
         )
@@ -169,6 +187,7 @@ actor TimelineStore {
         pageSize: Int,
         previewTextLimit: Int,
         kindFilter: TimelineItemKind? = nil,
+        appFilter: String? = nil,
         searchQuery: String = ""
     ) async throws -> DailyTimelinePage {
         if day == currentDay {
@@ -180,6 +199,7 @@ actor TimelineStore {
                 pageSize: pageSize,
                 previewTextLimit: previewTextLimit,
                 kindFilter: kindFilter,
+                appFilter: appFilter,
                 searchQuery: searchQuery
             )
         }
@@ -193,6 +213,7 @@ actor TimelineStore {
                 totalCount: 0,
                 dayTotalCount: 0,
                 kindCounts: [:],
+                appCounts: [:],
                 loadedCount: 0,
                 hasMore: false
             )
@@ -206,6 +227,9 @@ actor TimelineStore {
         if let kindFilter {
             pageDecoder.userInfo[PagingContext.kindFilterKey] = kindFilter.rawValue
         }
+        if let appFilter, !appFilter.isEmpty {
+            pageDecoder.userInfo[PagingContext.appFilterKey] = appFilter
+        }
         pageDecoder.userInfo[PagingContext.searchQueryKey] = searchQuery
         let snapshot = try pageDecoder.decode(TimelinePageSnapshot.self, from: data)
 
@@ -216,9 +240,28 @@ actor TimelineStore {
             totalCount: snapshot.totalCount,
             dayTotalCount: snapshot.dayTotalCount,
             kindCounts: snapshot.kindCounts,
+            appCounts: snapshot.appCounts,
             loadedCount: min(snapshot.totalCount, (page + 1) * pageSize),
             hasMore: snapshot.hasMore
         )
+    }
+
+    func recentEntries(limit: Int = 5, previewTextLimit: Int = 200) async throws -> (day: String?, items: [TimelineDisplayItem]) {
+        let targetDay: String?
+        if let currentDay {
+            targetDay = currentDay
+        } else {
+            targetDay = try allAvailableDays().first
+        }
+        guard let targetDay else { return (nil, []) }
+
+        let page = try await timelinePage(
+            for: targetDay,
+            page: 0,
+            pageSize: limit,
+            previewTextLimit: previewTextLimit
+        )
+        return (targetDay, page.items)
     }
 
     func fullText(for day: String, matching target: TimelineItem) async throws -> String {
@@ -328,14 +371,6 @@ actor TimelineStore {
         return previewItems
     }
 
-    private func makeDailyTimeline(_ items: [TimelineItem]) -> DailyTimeline {
-        DailyTimeline(
-            date: currentDay ?? dayFormatter.string(from: Date()),
-            silenceGapSeconds: silenceGapSeconds,
-            items: items
-        )
-    }
-
     private func makeTimelinePage(
         day: String,
         silenceGapSeconds: Int,
@@ -344,15 +379,20 @@ actor TimelineStore {
         pageSize: Int,
         previewTextLimit: Int,
         kindFilter: TimelineItemKind?,
+        appFilter: String?,
         searchQuery: String
     ) -> DailyTimelinePage {
         var kindCounts: [TimelineItemKind: Int] = [:]
+        var appCounts: [String: Int] = [:]
         var filteredItems: [TimelineItem] = []
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
 
         for item in sourceItems {
             kindCounts[item.kind, default: 0] += 1
-            if Self.matches(item, kindFilter: kindFilter, searchQuery: trimmedQuery) {
+            if let app = item.appName?.trimmingCharacters(in: .whitespacesAndNewlines), !app.isEmpty {
+                appCounts[app, default: 0] += 1
+            }
+            if Self.matches(item, kindFilter: kindFilter, appFilter: appFilter, searchQuery: trimmedQuery) {
                 filteredItems.append(item)
             }
         }
@@ -370,6 +410,7 @@ actor TimelineStore {
             totalCount: filteredItems.count,
             dayTotalCount: sourceItems.count,
             kindCounts: kindCounts,
+            appCounts: appCounts,
             loadedCount: min(filteredItems.count, (page + 1) * pageSize),
             hasMore: filteredItems.count > ((page + 1) * pageSize)
         )
@@ -405,9 +446,19 @@ actor TimelineStore {
         try baseDirectory().appendingPathComponent("\(day).json")
     }
 
-    private static func matches(_ item: TimelineItem, kindFilter: TimelineItemKind?, searchQuery: String) -> Bool {
+    private static func matches(
+        _ item: TimelineItem,
+        kindFilter: TimelineItemKind?,
+        appFilter: String?,
+        searchQuery: String
+    ) -> Bool {
         if let kindFilter, item.kind != kindFilter {
             return false
+        }
+        if let appFilter, !appFilter.isEmpty {
+            guard item.appName?.caseInsensitiveCompare(appFilter) == .orderedSame else {
+                return false
+            }
         }
         if searchQuery.isEmpty {
             return true

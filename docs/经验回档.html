@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>经验回档 · InputTimeline</title>
+  <link rel="icon" type="image/png" href="./assets/icon_master.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #F5F5F7;
+      --card: #FFFFFF;
+      --text: #1D1D1F;
+      --muted: #6E6E73;
+      --border: rgba(0, 0, 0, 0.06);
+      --accent: #0071E3;
+      --accent-soft: #E8F2FD;
+      --sidebar: 320px;
+      --radius: 16px;
+      --fs-base: 15px;
+      --fs-sm: 13px;
+      --fs-xs: 12px;
+      --fs-2xs: 11px;
+      --scrollbar-thumb: rgba(110, 110, 115, 0.28);
+      --scrollbar-thumb-active: rgba(110, 110, 115, 0.42);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; }
+    }
+    body {
+      font-family: Inter, -apple-system, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: var(--fs-base);
+      line-height: 1.55;
+    }
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+    *::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    *::-webkit-scrollbar-track,
+    *::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+    *::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      background-clip: content-box;
+      border: 2px solid transparent;
+      border-radius: 999px;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scrollbar-thumb-active);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: var(--sidebar) 1fr;
+      min-height: 100vh;
+    }
+    aside {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 1.25rem 1rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .aside-brand { margin-bottom: 1rem; }
+    .aside-brand h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .aside-brand p {
+      font-size: var(--fs-sm);
+      color: var(--muted);
+      margin-top: 0.25rem;
+      line-height: 1.35;
+    }
+    .search {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border: none;
+      border-radius: 10px;
+      background: var(--bg);
+      font: inherit;
+      font-size: var(--fs-sm);
+      margin-bottom: 0.875rem;
+      flex-shrink: 0;
+    }
+    .search:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+    .toc-label {
+      font-size: var(--fs-2xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+      flex-shrink: 0;
+    }
+    aside nav {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .toc {
+      list-style: none;
+      overflow-y: auto;
+      flex: 1 1 auto;
+      min-height: 0;
+      overscroll-behavior: contain;
+      margin: 0 -0.25rem;
+      padding: 0 0.25rem;
+    }
+    .toc-group {
+      margin-bottom: 1rem;
+    }
+    .toc-group:last-child {
+      margin-bottom: 0;
+    }
+    .toc-date {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.35rem;
+      background: linear-gradient(90deg, var(--accent-soft) 0%, rgba(232, 242, 253, 0.35) 100%);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 10px 10px 0;
+      box-shadow: inset 0 0 0 1px rgba(0, 113, 227, 0.08);
+    }
+    .toc-date-text {
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+    .toc-count {
+      font-size: var(--fs-2xs);
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--card);
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+      flex-shrink: 0;
+    }
+    .toc-items {
+      list-style: none;
+    }
+    .toc a {
+      display: block;
+      padding: 0.45rem 0.5rem;
+      font-size: var(--fs-sm);
+      line-height: 1.4;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .toc a:hover { background: var(--bg); color: var(--text); }
+    .toc a.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+    main {
+      padding: 1.25rem 1.5rem 3rem;
+      min-width: 0;
+    }
+    .main-intro {
+      margin-bottom: 1rem;
+      padding: 0 0.25rem;
+    }
+    .main-intro h2 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+    .main-intro p {
+      margin-top: 0.25rem;
+      font-size: var(--fs-base);
+      color: var(--muted);
+    }
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .date-section {
+      margin-bottom: 1.25rem;
+    }
+    .date-section:last-child {
+      margin-bottom: 0;
+    }
+    .date-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.625rem 1rem;
+      margin-bottom: 0.625rem;
+      background: linear-gradient(90deg, var(--accent-soft) 0%, rgba(232, 242, 253, 0.35) 100%);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 12px 12px 0;
+      box-shadow: inset 0 0 0 1px rgba(0, 113, 227, 0.08);
+    }
+    .date-header-text {
+      font-size: var(--fs-base);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+    .date-header-weekday {
+      font-size: var(--fs-2xs);
+      font-weight: 500;
+      color: var(--muted);
+      margin-left: 0.35rem;
+    }
+    .date-count {
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--card);
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      flex-shrink: 0;
+    }
+    .date-section .list {
+      gap: 10px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      scroll-margin-top: 1rem;
+      transition: box-shadow 0.2s;
+    }
+    .card:hover { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07); }
+    .card-hd {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.625rem;
+    }
+    .card-title-wrap { flex: 1; min-width: 0; }
+    .card-title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      line-height: 1.35;
+    }
+    .card-date {
+      font-size: var(--fs-sm);
+      color: var(--muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+      padding-top: 0.15rem;
+    }
+    .tags {
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .tag {
+      font-size: var(--fs-xs);
+      font-weight: 500;
+      color: var(--muted);
+      background: var(--bg);
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+    }
+    .sections {
+      display: grid;
+      gap: 0.5rem;
+    }
+    .section-label {
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .section-sub {
+      font-size: var(--fs-sm);
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .section p, .section ol {
+      font-size: var(--fs-sm);
+      color: #333;
+    }
+    .section ol {
+      margin-left: 1.25rem;
+    }
+    .section ol li { margin-bottom: 0.25rem; }
+    .card-detailed .sections { gap: 0; }
+    .card-detailed .section {
+      padding: 0.75rem 0;
+      border-top: 1px solid var(--border);
+    }
+    .card-detailed .section:first-child {
+      padding-top: 0.15rem;
+      border-top: none;
+    }
+    .card-detailed .section:last-child { padding-bottom: 0.15rem; }
+    .card-detailed .section-label {
+      color: var(--text);
+      font-size: var(--fs-sm);
+      text-transform: none;
+      letter-spacing: -0.005em;
+      margin-bottom: 0.35rem;
+    }
+    .card-detailed .section p,
+    .card-detailed .section ol {
+      line-height: 1.7;
+    }
+    .card-detailed .section ol li { margin-bottom: 0.45rem; }
+    .card-detailed .section ol li:last-child { margin-bottom: 0; }
+    .section a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .section a:hover { text-decoration: underline; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+      background: var(--bg);
+      padding: 0.05em 0.3em;
+      border-radius: 4px;
+    }
+    .empty {
+      background: var(--card);
+      border-radius: var(--radius);
+      text-align: center;
+      color: var(--muted);
+      padding: 3rem 1.5rem;
+    }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      aside {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        max-height: none;
+      }
+      aside nav {
+        flex: none;
+        min-height: auto;
+        width: 100%;
+      }
+      .toc {
+        flex: none;
+        width: 100%;
+        max-height: 180px;
+      }
+      main { padding: 1rem 1rem 2.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <div class="aside-brand">
+        <h1>经验回档</h1>
+        <p>踩坑与解法的浓缩记录 · InputTimeline</p>
+      </div>
+      <input class="search" id="search" type="search" placeholder="搜索…" aria-label="搜索">
+      <div class="toc-label">目录</div>
+      <nav><ul class="toc" id="toc"></ul></nav>
+    </aside>
+    <main>
+      <header class="main-intro">
+        <h2 id="intro-title">InputTimeline 开发经验回档</h2>
+        <p>每条经验聚焦一个问题 · 按现象、原因、解法与验收展开</p>
+      </header>
+      <div class="list" id="content"></div>
+    </main>
+  </div>
+  <script>
+    const ENTRIES = [
+      {
+        id: 1,
+        title: "全局键盘监听只用 .listenOnly，配合 TCC 重编后签名失效排查",
+        date: "2026-11-12",
+        time: "18:00",
+        tags: ["CGEventTap", "TCC", "Input Monitoring", "Code Signing"],
+        sections: [
+          { label: "设计取舍", type: "text", content: "<code>KeyboardMonitor</code> 只需要被动记录按键与复制/粘贴快捷键，绝不拦截或修改事件，因此 <code>CGEvent.tapCreate</code> 明确使用 <code>options: .listenOnly</code>。这样只需请求「输入监控（Input Monitoring）」权限，而不必申请高权限的「辅助功能（Accessibility）」控制权。" },
+          { label: "现象与陷阱", type: "list", items: [
+            "本地通过 <code>./scripts/build-app.sh</code> 使用 <code>codesign --sign -</code>（ad-hoc 签名）重新编译打包后，系统设置「输入监控」里的开关看起来仍是勾选状态。",
+            "实际运行时 <code>CGEvent.tapCreate</code> 返回 <code>nil</code>，无法建立监听（界面表现为 <code>tapCreationFailed = true</code>）。",
+            "原因在于 ad-hoc 签名的 designated requirement 绑定可执行文件哈希（<code>cdhash</code>）；重编译后二进制变更，macOS TCC 认为不再是同一个已授权身份。"
+          ]},
+          { label: "解法与提示链路", type: "list", items: [
+            "区分为两种异常状态：未授权（<code>!permissionGranted</code>）与授权已失效（<code>tapCreationFailed</code>）。",
+            "在主界面警告条与引导步骤中明确提示用户「若刚重新编译应用，请在系统设置中移除旧条目后重新勾选」，避免用户看到开关亮着却以为应用坏了。",
+            "长期日常开发建议在 <code>build-app.sh</code> 使用稳定的本地 <code>Apple Development</code> 签名身份，跨重建保持同一 <code>identifier + certificate leaf</code>。"
+          ]},
+          { label: "参考", type: "text", content: "<code>Sources/InputTimeline/KeyboardMonitor.swift</code>、<code>PermissionHelper.swift</code>、<code>scripts/build-app.sh</code>。" }
+        ]
+      },
+      {
+        id: 2,
+        title: "按日大 JSON 的低内存流式分页与摘要截断",
+        date: "2026-11-12",
+        time: "20:15",
+        tags: ["TimelineStore", "JSONDecoder", "Performance", "Memory"],
+        sections: [
+          { label: "现象", type: "text", content: "高频打字和复制长代码片段后，单日 JSON 文件可能增长到数兆甚至上万条；若一次性把整天记录解码成完整数组并渲染全部全文，打开历史日期会明显卡顿。" },
+          { label: "解法", type: "list", items: [
+            "利用 <code>JSONDecoder.userInfo</code> 将分页参数（<code>page</code>、<code>pageSize</code>、<code>previewTextLimit</code>、筛选条件）注入 <code>TimelinePageSnapshot</code> 的自定义解码器。",
+            "在 <code>nestedUnkeyedContainer</code> 单趟遍历中同步完成全天计数（<code>dayTotalCount</code>、<code>kindCounts</code>、<code>appCounts</code>）、条件过滤与尾部滑动窗口截留。",
+            "列表中仅保留前 420 字符预览并标记 <code>isTruncated</code>，点击「展开全文」或复制时再通过 <code>store.fullText(for:matching:)</code> 按需提取完整原文。"
+          ]},
+          { label: "参考", type: "text", content: "<code>Sources/InputTimeline/TimelineStore.swift</code>（<code>TimelinePageSnapshot</code> 与 <code>makeDisplayItem</code>）。" }
+        ]
+      },
+      {
+        id: 3,
+        title: "剪贴板监控补全来源 appName 与隐私排除名单",
+        date: "2026-11-13",
+        time: "22:40",
+        tags: ["Clipboard", "Privacy", "NSWorkspace", "NSPasteboard"],
+        sections: [
+          { label: "遗漏现象", type: "text", content: "初版 <code>KeyboardMonitor</code> 只在普通按键回调中读取 <code>NSWorkspace.shared.frontmostApplication?.localizedName</code>，而在识别 <code>⌘C</code> / <code>⌘V</code> 时漏传了 <code>appName</code>，导致时间线上所有复制、粘贴记录都不知道来自哪个软件。" },
+          { label: "关键时序与隐私处理", type: "list", items: [
+            "在 <code>CGEvent</code> 回调瞬间即同步读取前台应用名并随 <code>ClipboardAction</code> 一并传递，防止切窗竞态。",
+            "识别到 <code>⌘C</code> 后延迟 <code>150ms</code> 再读 <code>NSPasteboard.general</code>，给源应用足够时间把选中文本写入系统剪贴板；<code>⌘V</code> 则直接读取。",
+            "在 <code>AppModel.handleKeyboardText</code> 与 <code>handleClipboardShortcut</code> 入口优先校验 <code>excludedApps</code>（如 1Password、钥匙串访问、Bitwarden），命中排除名单时直接提前返回，甚至不读取系统剪贴板，彻底保护敏感信息。"
+          ]},
+          { label: "向后兼容", type: "text", content: "<code>TimelineItem.appName</code> 保持可选类型 <code>String?</code>，旧版不含该字段的历史 JSON 文件无需迁移即可直接解析。" },
+          { label: "参考", type: "text", content: "<code>KeyboardMonitor.swift</code>、<code>RecordingPreference.swift</code>、<code>AppModel.swift</code>。" }
+        ]
+      },
+      {
+        id: 4,
+        title: "Plush-UI 风格移植：在 SwiftUI 中适配 Light/Dark 与无边框纸面层级",
+        date: "2026-11-14",
+        time: "00:30",
+        tags: ["Plush-UI", "Design System", "SwiftUI", "Dark Mode"],
+        sections: [
+          { label: "设计抓手", type: "text", content: "借鉴 <code>plush-ui</code> 时重点不是生硬放大圆角，而是抽取它的核心语言：暖灰背景与纯白卡片的明度层级、<code>SF Pro Rounded</code> 圆润字形 + 等宽数字、墨黑主按钮与鲜绿渐变激活态，以及带有阻尼过冲的物理弹簧交互。" },
+          { label: "工程适配要点", type: "list", items: [
+            "<code>plush-ui</code> 原库仅提供浅色 token；在 macOS 上通过 <code>NSColor(name: nil) { appearance in ... }</code> 为 <code>bg / panel / surface / fill / ink</code> 编写动态双态色板，同时适配深浅外观。",
+            "针对原本只写进 <code>AppModel.statusMessage</code> 却从未在界面展示的盲区，落地全局 <code>PlushToastBanner</code> 胶囊浮层，让复制、导出、切换录制状态均有即时反馈。",
+            "将原本简陋的文本式 <code>MenuBarExtra</code> 升级为 <code>.menuBarExtraStyle(.window)</code> 控制中心，集成了总开关、15m/30m/60m 限时暂停和最近 4 条记录一键复制回捞。"
+          ]},
+          { label: "参考", type: "text", content: "<code>PlushTheme.swift</code>、<code>PlushComponents.swift</code>、<code>InputTimelineApp.swift</code>。" }
+        ]
+      },
+      {
+        id: 5,
+        title: "透明融合标题栏与安全区陷阱：去掉侧栏按钮后顶部控件反被压住",
+        date: "2026-11-14",
+        time: "01:15",
+        detailed: true,
+        tags: ["macOS", "SwiftUI", "Titlebar", "SafeArea", "NavigationSplitView", "Layout"],
+        sections: [
+          { label: "现象与连续两轮问题", type: "list", items: [
+            "<strong>第一轮问题（多余系统按钮）：</strong>使用 <code>NavigationSplitView</code> 时，macOS 系统会自动在左上角交通灯右侧注入一个 Sidebar 折叠图标按钮；对于固定双栏工具来说既多余又破坏顶部视觉统一。",
+            "<strong>第二轮问题（顶部控件被挡住）：</strong>将 <code>NavigationSplitView</code> 替换为自定义 <code>HStack(spacing: 0)</code> + <code>.fullSizeContentView</code> + <code>titlebarAppearsTransparent = true</code> 后，为了把背景铺满顶边而在外层容器加了 <code>.ignoresSafeArea(.container, edges: .top)</code>，右侧控制条仅设了 <code>padding(.top, 18)</code>。结果分段器与警告条直接顶进了约 <code>28pt</code> 的系统透明标题栏热区，被窗口上沿压住且容易被拖拽手势干扰。"
+          ]},
+          { label: "错判与复盘", type: "list", items: [
+            "<strong>错判 1：</strong>以为去掉 <code>NavigationSplitView</code> 改用透明标题栏后，需要手动在所有地方用硬编码 <code>padding(.top, 42)</code> 去躲交通灯。",
+            "<strong>事实真相：</strong>在开启 <code>.fullSizeContentView</code> 时，SwiftUI 默认仍会自动保留顶部约 <code>28pt</code> 的标题栏安全区（<code>safeAreaInsets.top</code>）。真正把控件顶进危险区的，是加在<strong>整棵内容树外层</strong>的 <code>.ignoresSafeArea(.container, edges: .top)</code>。",
+            "<strong>错判 2：</strong>在 <code>WindowStyleConfigurator</code> 中随手开启了 <code>window.isMovableByWindowBackground = true</code>，可能干扰列表卡片内 <code>.textSelection(.enabled)</code> 的文本划选体验。"
+          ]},
+          { label: "最终解法", type: "list", items: [
+            "移除外层容器的 <code>.ignoresSafeArea(.container, edges: .top)</code>，只将其放在左右两栏的 <code>.background(...)</code> 与中缝分割线上，让背景色无缝铺到窗口顶边，而所有交互内容自然留在系统标题栏安全区下方。",
+            "左侧「时间档案」与右侧 <code>topControlBar</code> 统一使用 <code>padding(.top, 10)</code>，两侧无需硬编码猜测交通灯高度即可天然水平对齐。",
+            "移除 <code>window.isMovableByWindowBackground = true</code>，仅依靠系统顶部原生标题栏安全带拖拽窗口，确保正文文本划选不受影响。"
+          ]},
+          { label: "可复用原则", type: "list", items: [
+            "<strong>只让背景忽略顶部安全区，绝不让交互内容忽略顶部安全区。</strong>这是实现 macOS 沉浸式透明顶栏最稳妥的姿势。",
+            "<strong>需要固定双栏时优先用 <code>HStack</code> 替代 <code>NavigationSplitView</code></strong>，尤其在需兼容 macOS 13 且不希望出现系统侧栏折叠按钮的场景。"
+          ]},
+          { label: "代码位置", type: "text", content: "<code>Sources/InputTimeline/ContentView.swift</code>（<code>body</code> 双栏布局与 <code>WindowStyleConfigurator</code>）。" }
+        ]
+      },
+      {
+        id: 6,
+        title: "SwiftUI 列表滑动卡顿排查：Hover 状态污染父视图与离屏阴影光栅化",
+        date: "2026-11-14",
+        time: "01:20",
+        detailed: true,
+        tags: ["SwiftUI", "Performance", "ScrollView", "Offscreen Rendering", "LazyVStack", "Hover"],
+        sections: [
+          { label: "现象", type: "list", items: [
+            "时间线右侧卡片列表在快速滚动时出现掉帧体感。",
+            "即使已经优化了右侧卡片阴影，<strong>左侧日期列表</strong>在鼠标滚轮滑动时依然一卡一卡地抖动。"
+          ]},
+          { label: "逐层拆解出来的 4 个真实瓶颈", type: "list", items: [
+            "<strong>1. Hover 状态挂在根视图上（左侧卡顿最大真凶）：</strong><code>ContentView</code> 持有了 <code>@State private var hoveredDay: String?</code>。当鼠标悬停在左侧滚动，列表行逐一划过指针时，每一行都会改写父视图状态，导致整个 <code>ContentView.body</code>（包含右侧几十条卡片、<code>PlushMiniCalendar</code> 与头部统计）全部重算一次。",
+            "<strong>2. 外层容器直接套动态 <code>.shadow()</code>（离屏渲染杀手）：</strong><code>TimelineCardView</code> 与 <code>PlushCardShadowModifier</code> 最初把双层阴影加在了包含富文本、图标、按钮的整个 <code>HStack/VStack</code> 外部。SwiftUI / CoreAnimation 每帧都要对整棵子视图树进行 Alpha 通道离屏光栅化与模糊。",
+            "<strong>3. 热路径重复计算 + 非懒加载嵌套：</strong>每次重绘都会在视图 <code>body</code> 内现场执行 <code>TimelineFormatters.groupDays(...)</code>（全量跑 <code>DateFormatter</code> 解析）；并且侧栏 <code>LazyVStack</code> 内层又包了一层非懒加载的普通 <code>VStack</code>，把一整段日期全部提前实例化；<code>ThinScrollbarConfigurator.updateNSView</code> 也在每次更新时反复异步遍历子视图树。",
+            "<strong>4. 卡片常驻节点与逐字符文本循环：</strong>每行卡片即便未悬停也常驻渲染圆形按钮，叠加隐式 <code>.animation</code>；<code>formattedRichText</code> 对无控制符的纯文本也执行 <code>Array(normalized)</code> 逐字符拼接。"
+          ]},
+          { label: "本轮彻底优化方案", type: "list", items: [
+            "<strong>状态隔离：</strong>将左侧列表行抽离为独立的 <code>SidebarDayRow</code> 结构体，<code>@State private var isHovered</code> 完全封装在行自身内部，滚动悬停不再波及 <code>ContentView</code> 与右侧列表。",
+            "<strong>预计算与单层懒加载：</strong>在 <code>AppModel</code> 仅当 <code>availableDays</code> 变更时预计算一次 <code>groupedDaySections</code>（含格式化日期与徽标）；侧栏列表去掉内层 <code>VStack</code>，改用单层 <code>LazyVStack</code> + <code>Section</code>。",
+            "<strong>消除离屏阴影：</strong>列表卡片默认取消模糊阴影，改用极轻 <code>0.75pt</code> 半透明内描边（零离屏开销）；其他独立卡片（日历/状态卡/Toast）把 <code>.shadow()</code> 严格收敛到纯色背景 <code>RoundedRectangle</code> 内部，绝不包裹前景文字与图片。",
+            "<strong>精简热路径：</strong><code>TimelineCardView</code> 仅在 <code>isHovered || didCopy</code> 时渲染右侧操作按钮；<code>formattedRichText</code> 增加无控制符时的 <code>O(1)</code> 快路径；<code>ThinScrollbarConfigurator.updateNSView</code> 置空不再重复扫描视图树。"
+          ]},
+          { label: "可复用原则", type: "list", items: [
+            "<strong><code>.onHover</code> 绝不能直接修改列表外层容器的 <code>@State</code>。</strong>滚动期间鼠标会连续扫过大量行，状态必须下沉到叶子行组件。",
+            "<strong>SwiftUI 的 <code>.shadow()</code> 只能加在纯色几何 Shape 上。</strong>加在含文字/图片的容器外层会强制触发离屏渲染，是长列表掉帧的首要元凶。",
+            "<strong>不要在视图 <code>body</code> 里做 <code>DateFormatter</code> 批处理。</strong>日期分组与格式化属于模型派生数据，应在数据变动时预计算。"
+          ]},
+          { label: "代码位置", type: "text", content: "<code>ContentView.swift</code>（<code>SidebarDayRow</code>）、<code>TimelineCardView.swift</code>、<code>PlushTheme.swift</code>、<code>TimelineFormatters.swift</code>、<code>ThinScrollbarModifier.swift</code>、<code>AppModel.swift</code>。" }
+        ]
+      }
+    ];
+
+    function filterEntries(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return ENTRIES;
+      return ENTRIES.filter(e =>
+        e.title.toLowerCase().includes(q) ||
+        e.tags.some(t => t.toLowerCase().includes(q)) ||
+        e.sections.some(s =>
+          (s.content && s.content.toLowerCase().includes(q)) ||
+          (s.items && s.items.some(i => i.toLowerCase().includes(q)))
+        )
+      );
+    }
+
+    function initSearch(inputId, onFilter) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      input.addEventListener("input", () => onFilter(input.value));
+    }
+
+    const content = document.getElementById("content");
+    const toc = document.getElementById("toc");
+    const introTitle = document.getElementById("intro-title");
+    let observer = null;
+    let currentQuery = "";
+
+    const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+    function formatDateLabel(dateStr) {
+      const d = new Date(dateStr + "T12:00:00");
+      const weekday = WEEKDAYS[d.getDay()];
+      return { date: dateStr, weekday };
+    }
+
+    function dateHeaderHtml(date, count, variant) {
+      const { weekday } = formatDateLabel(date);
+      const countClass = variant === "toc" ? "toc-count" : "date-count";
+      const textClass = variant === "toc" ? "toc-date-text" : "date-header-text";
+      return `
+        <span class="${textClass}">${date}<span class="date-header-weekday">${weekday}</span></span>
+        <span class="${countClass}">${count} 条</span>
+      `;
+    }
+
+    function renderSection(s) {
+      let html = `<div class="section"><div class="section-label">${s.label}</div>`;
+      if (s.subtitle) html += `<div class="section-sub">${s.subtitle}</div>`;
+      if (s.type === "list") {
+        html += "<ol>" + s.items.map(i => `<li>${i}</li>`).join("") + "</ol>";
+      } else {
+        html += `<p>${s.content}</p>`;
+      }
+      return html + "</div>";
+    }
+
+    function groupByDate(entries) {
+      const groups = new Map();
+      for (const e of entries) {
+        if (!groups.has(e.date)) groups.set(e.date, []);
+        groups.get(e.date).push(e);
+      }
+      for (const items of groups.values()) {
+        items.sort((a, b) => (a.time || "").localeCompare(b.time || "") || a.id - b.id);
+      }
+      return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
+    function renderToc(entries) {
+      if (!entries.length) {
+        toc.innerHTML = '<li class="toc-empty" style="font-size:var(--fs-sm);color:var(--muted);padding:0.5rem">无匹配结果</li>';
+        return;
+      }
+      toc.innerHTML = groupByDate(entries).map(([date, items]) => `
+        <li class="toc-group">
+          <div class="toc-date">${dateHeaderHtml(date, items.length, "toc")}</div>
+          <ul class="toc-items">
+            ${items.map(e => `
+              <li><a href="#e${e.id}">${e.title}</a></li>
+            `).join("")}
+          </ul>
+        </li>
+      `).join("");
+    }
+
+    function renderCard(e) {
+      return `
+        <article class="card${e.detailed ? " card-detailed" : ""}" id="e${e.id}">
+          <div class="card-hd">
+            <div class="card-title-wrap">
+              <h3 class="card-title">${e.title}</h3>
+            </div>
+            <time class="card-date" datetime="${e.date}T${e.time}:00+08:00">${e.date} ${e.time}</time>
+          </div>
+          <div class="tags">${e.tags.map(t => `<span class="tag">${t}</span>`).join("")}</div>
+          <div class="sections">${e.sections.map(renderSection).join("")}</div>
+        </article>
+      `;
+    }
+
+    function bindObserver() {
+      if (observer) observer.disconnect();
+      observer = new IntersectionObserver(entries => {
+        entries.forEach(en => {
+          if (en.isIntersecting) {
+            toc.querySelectorAll("a").forEach(a => a.classList.remove("active"));
+            const link = toc.querySelector(`a[href="#${en.target.id}"]`);
+            if (link) link.classList.add("active");
+          }
+        });
+      }, { rootMargin: "-15% 0px -75% 0px" });
+      document.querySelectorAll(".card").forEach(el => observer.observe(el));
+    }
+
+    function render(entries) {
+      if (introTitle) {
+        introTitle.textContent = currentQuery.trim()
+          ? `匹配到 ${entries.length} 条开发经验`
+          : `${ENTRIES.length} 条 macOS 开发经验`;
+      }
+      renderToc(entries);
+
+      if (!entries.length) {
+        content.innerHTML = '<p class="empty">无匹配结果</p>';
+        return;
+      }
+
+      content.innerHTML = groupByDate(entries).map(([date, items]) => `
+        <section class="date-section">
+          <div class="date-header">${dateHeaderHtml(date, items.length, "main")}</div>
+          <div class="list">${items.map(renderCard).join("")}</div>
+        </section>
+      `).join("");
+
+      bindObserver();
+    }
+
+    render(ENTRIES);
+    initSearch("search", q => {
+      currentQuery = q;
+      render(filterEntries(q));
+    });
+  </script>
+</body>
+</html>

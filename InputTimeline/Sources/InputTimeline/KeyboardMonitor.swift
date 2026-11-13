@@ -21,7 +21,7 @@ final class KeyboardMonitor {
     private var callbackStatePointer: UnsafeMutableRawPointer?
 
     init(onKeyboardText: @escaping @Sendable (String, String?, Date) -> Void,
-         onClipboardShortcut: @escaping @Sendable (ClipboardAction, Date) -> Void) {
+         onClipboardShortcut: @escaping @Sendable (ClipboardAction, String?, Date) -> Void) {
         self.callbackState = CallbackState(onKeyboardText: onKeyboardText, onClipboardShortcut: onClipboardShortcut)
     }
 
@@ -91,10 +91,10 @@ final class KeyboardMonitor {
 
 private final class CallbackState {
     private let onKeyboardText: @Sendable (String, String?, Date) -> Void
-    private let onClipboardShortcut: @Sendable (ClipboardAction, Date) -> Void
+    private let onClipboardShortcut: @Sendable (ClipboardAction, String?, Date) -> Void
 
     init(onKeyboardText: @escaping @Sendable (String, String?, Date) -> Void,
-         onClipboardShortcut: @escaping @Sendable (ClipboardAction, Date) -> Void) {
+         onClipboardShortcut: @escaping @Sendable (ClipboardAction, String?, Date) -> Void) {
         self.onKeyboardText = onKeyboardText
         self.onClipboardShortcut = onClipboardShortcut
     }
@@ -103,14 +103,15 @@ private final class CallbackState {
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift])
         let timestamp = Date()
+        let appName = NSWorkspace.shared.frontmostApplication?.localizedName
 
         if flags.contains(.maskCommand), !flags.contains(.maskControl), !flags.contains(.maskAlternate) {
             if keyCode == 8 {
-                onClipboardShortcut(.copy, timestamp)
+                onClipboardShortcut(.copy, appName, timestamp)
                 return
             }
             if keyCode == 9 {
-                onClipboardShortcut(.paste, timestamp)
+                onClipboardShortcut(.paste, appName, timestamp)
                 return
             }
         }
@@ -130,7 +131,6 @@ private final class CallbackState {
             .replacingOccurrences(of: "\u{7F}", with: "")
         guard !text.isEmpty else { return }
 
-        let appName = NSWorkspace.shared.frontmostApplication?.localizedName
         onKeyboardText(text, appName, timestamp)
     }
 }

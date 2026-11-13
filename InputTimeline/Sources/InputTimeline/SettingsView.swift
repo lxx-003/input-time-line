@@ -17,84 +17,319 @@ enum SettingsNavigator {
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var newExcludedApp = ""
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("开启键盘与剪贴板记录", isOn: Binding(
-                    get: { model.isRecording },
-                    set: { model.toggleRecording($0) }
-                ))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("偏好设置")
+                            .font(PlushTheme.rounded(20, weight: .semibold))
+                            .foregroundStyle(PlushTheme.ink)
+                        Text("所有记录均仅存于本地，可按需配置分段、隐私排除与系统集成。")
+                            .font(PlushTheme.rounded(12))
+                            .foregroundStyle(PlushTheme.ink2)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
 
-                Stepper(value: Binding(
-                    get: { model.silenceGapSeconds },
-                    set: { model.updateSilenceGap($0) }
-                ), in: 1 ... 10) {
-                    LabeledContent("键盘静默分段间隔") {
-                        Text("\(model.silenceGapSeconds) 秒")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                // Card 1: Capture & Segmentation
+                settingsCard(title: "采集与分段", icon: "waveform.path") {
+                    settingsRow(
+                        title: "开启键盘与剪贴板记录",
+                        subtitle: "关闭后不会捕获任何输入或复制粘贴事件"
+                    ) {
+                        PlushSwitch(
+                            isOn: Binding(
+                                get: { model.isRecording },
+                                set: { model.toggleRecording($0) }
+                            ),
+                            size: .regular
+                        )
+                    }
+
+                    Divider().opacity(0.45)
+
+                    settingsRow(
+                        title: "键盘静默分段间隔",
+                        subtitle: "停顿超过该时长或切换应用时自动切分新记录"
+                    ) {
+                        PlushCounterStepper(
+                            value: Binding(
+                                get: { model.silenceGapSeconds },
+                                set: { model.updateSilenceGap($0) }
+                            ),
+                            range: 1 ... 10,
+                            unit: "秒"
+                        )
                     }
                 }
-            } header: {
-                Text("采集与分段")
-            } footer: {
-                Text("连续按键超过该静默时长，或切换前台应用时，将自动切分为新的时间线记录。")
-            }
 
-            Section {
-                Toggle("开机自动启动", isOn: Binding(
-                    get: { model.launchAtLogin },
-                    set: { model.setLaunchAtLogin($0) }
-                ))
+                // Card 2: Privacy Exclusions
+                settingsCard(title: "隐私排除应用", icon: "eye.slash") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("当以下应用处于前台时，自动跳过键盘记录与剪贴板读取。")
+                            .font(PlushTheme.rounded(12))
+                            .foregroundStyle(PlushTheme.ink2)
 
-                LabeledContent("输入监控权限") {
-                    HStack(spacing: 10) {
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(model.permissionGranted ? Color.green : Color.orange)
-                                .frame(width: 7, height: 7)
-                            Text(model.permissionGranted ? "已授权" : "未授权")
-                                .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            TextField("输入应用名称，例如 1Password", text: $newExcludedApp)
+                                .textFieldStyle(.plain)
+                                .font(PlushTheme.rounded(12.5, weight: .medium))
+                                .padding(.horizontal, 12)
+                                .frame(height: 34)
+                                .background(
+                                    Capsule()
+                                        .fill(PlushTheme.fill)
+                                )
+                                .onSubmit {
+                                    addCustomExcludedApp()
+                                }
+
+                            Button("添加") {
+                                addCustomExcludedApp()
+                            }
+                            .buttonStyle(PlushPillButtonStyle(variant: .primary, size: .sm))
+                            .disabled(newExcludedApp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
+
+                        if !model.excludedApps.isEmpty {
+                            FlowLayout(spacing: 6) {
+                                ForEach(model.excludedApps, id: \.self) { appName in
+                                    HStack(spacing: 5) {
+                                        if let icon = AppIconProvider.shared.icon(for: appName) {
+                                            Image(nsImage: icon)
+                                                .resizable()
+                                                .frame(width: 13, height: 13)
+                                                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                                        }
+                                        Text(appName)
+                                            .font(PlushTheme.rounded(12, weight: .semibold))
+                                            .foregroundStyle(PlushTheme.ink)
+
+                                        Button {
+                                            withAnimation(PlushTheme.spring) {
+                                                model.removeExcludedApp(appName)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 8.5, weight: .bold))
+                                                .foregroundStyle(PlushTheme.ink2)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.leading, 9)
+                                    .padding(.trailing, 8)
+                                    .padding(.vertical, 5)
+                                    .background(Capsule().fill(PlushTheme.fillStrong))
+                                }
+                            }
+                        }
+
+                        let remainingSuggestions = RecordingPreference.suggestedSensitiveApps.filter { candidate in
+                            !model.excludedApps.contains { $0.caseInsensitiveCompare(candidate) == .orderedSame }
+                        }
+
+                        if !remainingSuggestions.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("快速添加常用隐私应用：")
+                                    .font(PlushTheme.rounded(11, weight: .medium))
+                                    .foregroundStyle(PlushTheme.ink3)
+
+                                FlowLayout(spacing: 6) {
+                                    ForEach(remainingSuggestions, id: \.self) { appName in
+                                        Button {
+                                            withAnimation(PlushTheme.spring) {
+                                                model.addExcludedApp(appName)
+                                            }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "plus")
+                                                    .font(.system(size: 9, weight: .bold))
+                                                Text(appName)
+                                            }
+                                            .font(PlushTheme.rounded(11.5, weight: .medium))
+                                            .foregroundStyle(PlushTheme.ink2)
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 4)
+                                            .background(Capsule().fill(PlushTheme.fill))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Card 3: System & Storage
+                settingsCard(title: "系统集成与数据存储", icon: "internaldrive") {
+                    settingsRow(
+                        title: "开机自动启动",
+                        subtitle: "建议将应用放入「应用程序」目录后开启"
+                    ) {
+                        PlushSwitch(
+                            isOn: Binding(
+                                get: { model.launchAtLogin },
+                                set: { model.setLaunchAtLogin($0) }
+                            ),
+                            size: .regular
+                        )
+                    }
+
+                    Divider().opacity(0.45)
+
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("输入监控权限")
+                                .font(PlushTheme.rounded(13, weight: .semibold))
+                                .foregroundStyle(PlushTheme.ink)
+                            Text("系统级事件监听授权状态")
+                                .font(PlushTheme.rounded(11.5))
+                                .foregroundStyle(PlushTheme.ink2)
+                        }
+
+                        Spacer()
+
+                        PlushStatusBadge(
+                            title: model.permissionGranted ? "已授权" : "未授权",
+                            dotColor: model.permissionGranted ? PlushTheme.success : PlushTheme.warning,
+                            isActive: model.permissionGranted
+                        )
+
+                        Button("重检") {
+                            model.refreshAll(showFeedback: true)
+                        }
+                        .buttonStyle(PlushPillButtonStyle(variant: .secondary, size: .xs))
 
                         Button("系统设置") {
                             model.requestPermission()
                         }
-
-                        Button("重新检查") {
-                            model.refreshAll()
-                        }
+                        .buttonStyle(PlushPillButtonStyle(variant: .primary, size: .xs))
                     }
-                }
-            } header: {
-                Text("系统集成")
-            } footer: {
-                Text("登录项需安装到「应用程序」目录；若未生效，请在「系统设置 → 通用 → 登录项」中允许。")
-            }
 
-            Section {
-                LabeledContent("数据目录") {
-                    HStack(spacing: 8) {
-                        Text(model.storageDirectoryPath)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    Divider().opacity(0.45)
+
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("本地数据目录")
+                                .font(PlushTheme.rounded(13, weight: .semibold))
+                                .foregroundStyle(PlushTheme.ink)
+                            Text(model.storageDirectoryPath)
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(PlushTheme.ink2)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+
+                        Spacer()
 
                         Button("打开目录") {
                             model.revealStorageDirectory()
                         }
+                        .buttonStyle(PlushPillButtonStyle(variant: .secondary, size: .xs))
                     }
                 }
-            } header: {
-                Text("存储与隐私")
-            } footer: {
-                Text("所有输入记录仅保存在本地 JSON 文件中；密码框等安全输入域通常不会被系统提供内容。")
+            }
+            .padding(20)
+        }
+        .background(PlushTheme.panel)
+        .frame(width: 560, height: 560)
+    }
+
+    private func addCustomExcludedApp() {
+        let trimmed = newExcludedApp.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        withAnimation(PlushTheme.spring) {
+            model.addExcludedApp(trimmed)
+        }
+        newExcludedApp = ""
+    }
+
+    private func settingsCard<Content: View>(
+        title: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(PlushTheme.ink2)
+                Text(title)
+                    .font(PlushTheme.rounded(13.5, weight: .semibold))
+                    .foregroundStyle(PlushTheme.ink)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                content()
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 500, height: 390)
+        .padding(16)
+        .plushCardSurface(cornerRadius: PlushTheme.Radius.card, background: PlushTheme.surface)
+    }
+
+    private func settingsRow<Control: View>(
+        title: String,
+        subtitle: String,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(PlushTheme.rounded(13, weight: .semibold))
+                    .foregroundStyle(PlushTheme.ink)
+                Text(subtitle)
+                    .font(PlushTheme.rounded(11.5))
+                    .foregroundStyle(PlushTheme.ink2)
+            }
+            Spacer()
+            control()
+        }
+    }
+}
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? 480
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 

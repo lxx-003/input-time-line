@@ -1,11 +1,18 @@
+import AppKit
 import Foundation
 import SwiftUI
 
 enum TimelineFormatters {
-    struct DaySection: Identifiable {
+    struct DayEntry: Identifiable, Hashable {
+        let id: String
+        let primary: String
+        let badge: String?
+    }
+
+    struct DaySection: Identifiable, Hashable {
         let id: String
         let title: String
-        let days: [String]
+        let days: [DayEntry]
     }
 
     private static let dayParser: DateFormatter = {
@@ -40,6 +47,15 @@ enum TimelineFormatters {
         formatter.calendar = Calendar.current
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.timeZone = .current
+        formatter.dateFormat = "MM 月 dd 日"
+        return formatter
+    }()
+
+    private static let chineseYearMonthDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = .current
         formatter.dateFormat = "yyyy 年 MM 月 dd 日"
         return formatter
     }()
@@ -66,13 +82,20 @@ enum TimelineFormatters {
         dayParser.date(from: day)
     }
 
+    static func formatDayKey(_ date: Date) -> String {
+        dayParser.string(from: date)
+    }
+
     static func sidebarDayDisplay(_ day: String) -> (primary: String, badge: String?) {
         guard let date = parseDay(day) else {
             return (day, nil)
         }
 
-        let formatted = chinesePaddedDateFormatter.string(from: date)
         let calendar = Calendar.current
+        let formatted = calendar.isDate(date, equalTo: Date(), toGranularity: .year)
+            ? chinesePaddedDateFormatter.string(from: date)
+            : chineseYearMonthDayFormatter.string(from: date)
+
         if calendar.isDateInToday(date) {
             return (formatted, "今天")
         }
@@ -103,23 +126,26 @@ enum TimelineFormatters {
         let calendar = Calendar.current
         let now = Date()
 
-        var recent: [String] = []
-        var thisWeek: [String] = []
-        var earlier: [String] = []
+        var recent: [DayEntry] = []
+        var thisWeek: [DayEntry] = []
+        var earlier: [DayEntry] = []
 
         for day in days {
+            let display = sidebarDayDisplay(day)
+            let entry = DayEntry(id: day, primary: display.primary, badge: display.badge)
+
             guard let date = parseDay(day) else {
-                earlier.append(day)
+                earlier.append(entry)
                 continue
             }
 
             if calendar.isDateInToday(date) || calendar.isDateInYesterday(date) {
-                recent.append(day)
+                recent.append(entry)
             } else if let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: now)),
                       date >= weekAgo {
-                thisWeek.append(day)
+                thisWeek.append(entry)
             } else {
-                earlier.append(day)
+                earlier.append(entry)
             }
         }
 
@@ -164,10 +190,33 @@ enum TimelineFormatters {
         }
     }
 
-    static func formattedRichText(_ raw: String) -> Text {
+    static func singleLineSnippet(_ raw: String, limit: Int = 72) -> String {
+        let cleaned = formatDisplayText(raw)
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.isEmpty {
+            return "（空内容）"
+        }
+        if cleaned.count <= limit {
+            return cleaned
+        }
+        return String(cleaned.prefix(limit)) + "..."
+    }
+
+    static func formattedRichText(_ raw: String, highlightQuery: String = "") -> Text {
         var normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
         while normalized.hasSuffix("\n") {
             normalized.removeLast()
+        }
+
+        let trimmedQuery = highlightQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Fast path: no special control characters
+        let hasControls = normalized.unicodeScalars.contains { scalar in
+            scalar == "\r" || scalar == "\t" || scalar == "\u{08}" || scalar == "\u{1B}"
+        }
+        if !hasControls {
+            return highlightedTextSegment(normalized, query: trimmedQuery)
         }
 
         var segments: [Text] = []
@@ -175,15 +224,15 @@ enum TimelineFormatters {
 
         func flushBuffer() {
             if !buffer.isEmpty {
-                segments.append(Text(buffer))
+                segments.append(highlightedTextSegment(buffer, query: trimmedQuery))
                 buffer = ""
             }
         }
 
         func symbolText(_ systemName: String) -> Text {
             Text(Image(systemName: systemName))
-                .font(.system(size: 11))
-                .foregroundColor(.secondary.opacity(0.7))
+                .font(.system(size: 10.5))
+                .foregroundColor(PlushTheme.ink3)
         }
 
         let chars = Array(normalized)
@@ -215,6 +264,32 @@ enum TimelineFormatters {
             return Text("")
         }
         return segments.dropFirst().reduce(segments[0], +)
+    }
+
+    static func highlightedAttributedString(_ text: String, query: String) -> AttributedString {
+        var attr = AttributedString(text)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return attr }
+
+        let lowerText = text.lowercased()
+        let lowerQuery = trimmed.lowercased()
+        var searchStart = lowerText.startIndex
+
+        while let range = lowerText.range(of: lowerQuery, range: searchStart..<lowerText.endIndex) {
+            if let attrRange = Range(range, in: attr) {
+                attr[attrRange].backgroundColor = PlushTheme.selectMark
+                attr[attrRange].foregroundColor = PlushTheme.ink
+            }
+            searchStart = range.upperBound
+        }
+        return attr
+    }
+
+    private static func highlightedTextSegment(_ chunk: String, query: String) -> Text {
+        guard !query.isEmpty else {
+            return Text(chunk)
+        }
+        return Text(highlightedAttributedString(chunk, query: query))
     }
 
     static func formatDisplayText(_ raw: String) -> String {

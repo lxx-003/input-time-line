@@ -81,6 +81,7 @@ struct DailyTimelinePage: Hashable {
     let totalCount: Int
     let dayTotalCount: Int
     let kindCounts: [TimelineItemKind: Int]
+    let appCounts: [String: Int]
     let loadedCount: Int
     let hasMore: Bool
 }
