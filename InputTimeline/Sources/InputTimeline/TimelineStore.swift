@@ -5,13 +5,17 @@ actor TimelineStore {
         static let pageKey = CodingUserInfoKey(rawValue: "timeline.page")!
         static let pageSizeKey = CodingUserInfoKey(rawValue: "timeline.pageSize")!
         static let previewTextLimitKey = CodingUserInfoKey(rawValue: "timeline.previewTextLimit")!
+        static let kindFilterKey = CodingUserInfoKey(rawValue: "timeline.kindFilter")!
+        static let searchQueryKey = CodingUserInfoKey(rawValue: "timeline.searchQuery")!
     }
 
     private struct TimelinePageSnapshot: Decodable {
         let date: String
         let silenceGapSeconds: Int
-        let items: [TimelineItem]
+        let items: [TimelineDisplayItem]
         let totalCount: Int
+        let dayTotalCount: Int
+        let kindCounts: [TimelineItemKind: Int]
         let hasMore: Bool
 
         private enum CodingKeys: String, CodingKey {
@@ -22,8 +26,12 @@ actor TimelineStore {
 
         init(from decoder: Decoder) throws {
             let page = decoder.userInfo[PagingContext.pageKey] as? Int ?? 0
-            let pageSize = decoder.userInfo[PagingContext.pageSizeKey] as? Int ?? 10
-            let previewTextLimit = decoder.userInfo[PagingContext.previewTextLimitKey] as? Int ?? 300
+            let pageSize = decoder.userInfo[PagingContext.pageSizeKey] as? Int ?? 30
+            let previewTextLimit = decoder.userInfo[PagingContext.previewTextLimitKey] as? Int ?? 400
+            let kindFilter = (decoder.userInfo[PagingContext.kindFilterKey] as? String)
+                .flatMap(TimelineItemKind.init(rawValue:))
+            let searchQuery = (decoder.userInfo[PagingContext.searchQueryKey] as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             let bufferedCount = max(pageSize * (page + 1), pageSize)
 
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -31,15 +39,24 @@ actor TimelineStore {
             silenceGapSeconds = try container.decode(Int.self, forKey: .silenceGapSeconds)
 
             var itemsContainer = try container.nestedUnkeyedContainer(forKey: .items)
-            var recentItems: [TimelineItem] = []
+            var recentItems: [TimelineDisplayItem] = []
             recentItems.reserveCapacity(bufferedCount)
 
-            var totalCount = 0
+            var dayTotalCount = 0
+            var filteredTotalCount = 0
+            var kindCounts: [TimelineItemKind: Int] = [:]
+
             while !itemsContainer.isAtEnd {
-                var item = try itemsContainer.decode(TimelineItem.self)
-                item.text = TimelineStore.previewText(item.text, limit: previewTextLimit)
-                recentItems.append(item)
-                totalCount += 1
+                let item = try itemsContainer.decode(TimelineItem.self)
+                dayTotalCount += 1
+                kindCounts[item.kind, default: 0] += 1
+
+                guard TimelineStore.matches(item, kindFilter: kindFilter, searchQuery: searchQuery) else {
+                    continue
+                }
+
+                filteredTotalCount += 1
+                recentItems.append(TimelineStore.makeDisplayItem(from: item, limit: previewTextLimit))
 
                 if recentItems.count > bufferedCount {
                     recentItems.removeFirst(recentItems.count - bufferedCount)
@@ -49,8 +66,10 @@ actor TimelineStore {
             let endIndex = max(0, recentItems.count - (page * pageSize))
             let startIndex = max(0, endIndex - pageSize)
             items = Array(recentItems[startIndex..<endIndex].reversed())
-            self.totalCount = totalCount
-            hasMore = totalCount > ((page + 1) * pageSize)
+            self.totalCount = filteredTotalCount
+            self.dayTotalCount = dayTotalCount
+            self.kindCounts = kindCounts
+            hasMore = filteredTotalCount > ((page + 1) * pageSize)
         }
     }
 
@@ -144,7 +163,14 @@ actor TimelineStore {
         return currentDay
     }
 
-    func timelinePage(for day: String, page: Int, pageSize: Int, previewTextLimit: Int) async throws -> DailyTimelinePage {
+    func timelinePage(
+        for day: String,
+        page: Int,
+        pageSize: Int,
+        previewTextLimit: Int,
+        kindFilter: TimelineItemKind? = nil,
+        searchQuery: String = ""
+    ) async throws -> DailyTimelinePage {
         if day == currentDay {
             return makeTimelinePage(
                 day: day,
@@ -152,7 +178,9 @@ actor TimelineStore {
                 sourceItems: flushedItemsForPreview(),
                 page: page,
                 pageSize: pageSize,
-                previewTextLimit: previewTextLimit
+                previewTextLimit: previewTextLimit,
+                kindFilter: kindFilter,
+                searchQuery: searchQuery
             )
         }
 
@@ -163,6 +191,8 @@ actor TimelineStore {
                 silenceGapSeconds: silenceGapSeconds,
                 items: [],
                 totalCount: 0,
+                dayTotalCount: 0,
+                kindCounts: [:],
                 loadedCount: 0,
                 hasMore: false
             )
@@ -173,6 +203,10 @@ actor TimelineStore {
         pageDecoder.userInfo[PagingContext.pageKey] = page
         pageDecoder.userInfo[PagingContext.pageSizeKey] = pageSize
         pageDecoder.userInfo[PagingContext.previewTextLimitKey] = previewTextLimit
+        if let kindFilter {
+            pageDecoder.userInfo[PagingContext.kindFilterKey] = kindFilter.rawValue
+        }
+        pageDecoder.userInfo[PagingContext.searchQueryKey] = searchQuery
         let snapshot = try pageDecoder.decode(TimelinePageSnapshot.self, from: data)
 
         return DailyTimelinePage(
@@ -180,9 +214,43 @@ actor TimelineStore {
             silenceGapSeconds: snapshot.silenceGapSeconds,
             items: snapshot.items,
             totalCount: snapshot.totalCount,
+            dayTotalCount: snapshot.dayTotalCount,
+            kindCounts: snapshot.kindCounts,
             loadedCount: min(snapshot.totalCount, (page + 1) * pageSize),
             hasMore: snapshot.hasMore
         )
+    }
+
+    func fullText(for day: String, matching target: TimelineItem) async throws -> String {
+        let sourceItems: [TimelineItem]
+        if day == currentDay {
+            sourceItems = flushedItemsForPreview()
+        } else {
+            let url = try fileURL(for: day)
+            guard fileManager.fileExists(atPath: url.path) else {
+                return target.text
+            }
+            let data = try Data(contentsOf: url)
+            let timeline = try decoder.decode(DailyTimeline.self, from: data)
+            sourceItems = timeline.items
+        }
+
+        let prefix = target.text.hasSuffix("...") ? String(target.text.dropLast(3)) : target.text
+        if let matched = sourceItems.reversed().first(where: { candidate in
+            candidate.kind == target.kind &&
+            candidate.start == target.start &&
+            candidate.end == target.end &&
+            candidate.at == target.at &&
+            candidate.appName == target.appName &&
+            (candidate.text == target.text || (!prefix.isEmpty && candidate.text.hasPrefix(prefix)))
+        }) {
+            return matched.text
+        }
+        return target.text
+    }
+
+    func storageDirectoryURL() throws -> URL {
+        try baseDirectory()
     }
 
     func allAvailableDays() throws -> [String] {
@@ -274,25 +342,36 @@ actor TimelineStore {
         sourceItems: [TimelineItem],
         page: Int,
         pageSize: Int,
-        previewTextLimit: Int
+        previewTextLimit: Int,
+        kindFilter: TimelineItemKind?,
+        searchQuery: String
     ) -> DailyTimelinePage {
-        let endIndex = max(0, sourceItems.count - (page * pageSize))
-        let startIndex = max(0, endIndex - pageSize)
-        let pageItems = sourceItems[startIndex..<endIndex]
-            .reversed()
-            .map { item in
-                var previewItem = item
-                previewItem.text = Self.previewText(item.text, limit: previewTextLimit)
-                return previewItem
+        var kindCounts: [TimelineItemKind: Int] = [:]
+        var filteredItems: [TimelineItem] = []
+        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        for item in sourceItems {
+            kindCounts[item.kind, default: 0] += 1
+            if Self.matches(item, kindFilter: kindFilter, searchQuery: trimmedQuery) {
+                filteredItems.append(item)
             }
+        }
+
+        let endIndex = max(0, filteredItems.count - (page * pageSize))
+        let startIndex = max(0, endIndex - pageSize)
+        let pageItems = filteredItems[startIndex..<endIndex]
+            .reversed()
+            .map { Self.makeDisplayItem(from: $0, limit: previewTextLimit) }
 
         return DailyTimelinePage(
             date: day,
             silenceGapSeconds: silenceGapSeconds,
             items: Array(pageItems),
-            totalCount: sourceItems.count,
-            loadedCount: min(sourceItems.count, (page + 1) * pageSize),
-            hasMore: sourceItems.count > ((page + 1) * pageSize)
+            totalCount: filteredItems.count,
+            dayTotalCount: sourceItems.count,
+            kindCounts: kindCounts,
+            loadedCount: min(filteredItems.count, (page + 1) * pageSize),
+            hasMore: filteredItems.count > ((page + 1) * pageSize)
         )
     }
 
@@ -324,6 +403,34 @@ actor TimelineStore {
 
     private func fileURL(for day: String) throws -> URL {
         try baseDirectory().appendingPathComponent("\(day).json")
+    }
+
+    private static func matches(_ item: TimelineItem, kindFilter: TimelineItemKind?, searchQuery: String) -> Bool {
+        if let kindFilter, item.kind != kindFilter {
+            return false
+        }
+        if searchQuery.isEmpty {
+            return true
+        }
+        if item.text.localizedCaseInsensitiveContains(searchQuery) {
+            return true
+        }
+        if let appName = item.appName, appName.localizedCaseInsensitiveContains(searchQuery) {
+            return true
+        }
+        return false
+    }
+
+    private static func makeDisplayItem(from item: TimelineItem, limit: Int) -> TimelineDisplayItem {
+        let originalCount = item.text.count
+        var previewItem = item
+        previewItem.text = previewText(item.text, limit: limit)
+        return TimelineDisplayItem(
+            id: item.id,
+            item: previewItem,
+            originalCharacterCount: originalCount,
+            isTruncated: limit > 0 && originalCount > limit
+        )
     }
 
     private static func previewText(_ text: String, limit: Int) -> String {

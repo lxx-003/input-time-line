@@ -1,9 +1,27 @@
 import Foundation
 
-enum TimelineItemKind: String, Codable, CaseIterable {
+enum TimelineItemKind: String, Codable, CaseIterable, Hashable {
     case keyboard = "键盘"
     case copy = "复制"
     case paste = "粘贴"
+}
+
+enum TimelineKindFilter: String, CaseIterable, Identifiable {
+    case all = "全部"
+    case keyboard = "键盘"
+    case copy = "复制"
+    case paste = "粘贴"
+
+    var id: String { rawValue }
+
+    var itemKind: TimelineItemKind? {
+        switch self {
+        case .all: return nil
+        case .keyboard: return .keyboard
+        case .copy: return .copy
+        case .paste: return .paste
+        }
+    }
 }
 
 struct TimelineItem: Codable, Identifiable, Hashable {
@@ -49,13 +67,28 @@ struct DailyTimeline: Codable, Hashable {
     let items: [TimelineItem]
 }
 
+struct TimelineDisplayItem: Identifiable, Hashable {
+    let id: UUID
+    let item: TimelineItem
+    let originalCharacterCount: Int
+    let isTruncated: Bool
+}
+
 struct DailyTimelinePage: Hashable {
     let date: String
     let silenceGapSeconds: Int
-    let items: [TimelineItem]
+    let items: [TimelineDisplayItem]
     let totalCount: Int
+    let dayTotalCount: Int
+    let kindCounts: [TimelineItemKind: Int]
     let loadedCount: Int
     let hasMore: Bool
+}
+
+struct InspectedTimelineEntry: Identifiable, Hashable {
+    let id: UUID
+    let item: TimelineItem
+    let fullText: String
 }
 
 struct KeyboardSegment {
