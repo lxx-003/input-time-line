@@ -552,6 +552,34 @@
           ]},
           { label: "代码位置", type: "text", content: "<code>Sources/InputTimeline/ThinScrollbarModifier.swift</code>（<code>PlushScrollView</code>、<code>EnclosingScrollViewAnchor</code>、<code>ThinOverlayScroller</code>），并在 <code>ContentView.swift</code>、<code>TimelineDetailSheet.swift</code>、<code>SettingsView.swift</code> 统一替换使用。" }
         ]
+      },
+      {
+        id: 8,
+        title: "稳定签名 + 单一安装路径：解决重编掉权限与 /Applications 双重 App 冲突",
+        date: "2026-11-14",
+        time: "02:05",
+        detailed: true,
+        tags: ["Code Signing", "TCC", "SMAppService", "build-app.sh", "macOS"],
+        sections: [
+          { label: "现象", type: "list", items: [
+            "每次修改 Swift 代码并用 <code>./scripts/build-app.sh</code> 重新构建后，macOS 都会重新索要「输入监控」权限。",
+            "即使切换到 <code>Apple Development</code> 证书签名，系统里仍出现<strong>两个 <code>InputTimeline.app</code></strong>（一个在 <code>/Applications/</code>，一个在 <code>dist/</code>），且登录项自启与权限开关容易指向旧包。"
+          ]},
+          { label: "根因", type: "list", items: [
+            "<strong>1. Ad-hoc 签名（<code>--sign -</code>）绑死内容哈希：</strong>每次编译生成的 Mach-O 二进制 <code>cdhash</code> 都会变化，导致 TCC 无法跨重建继承权限。",
+            "<strong>2. 双副本签名分裂：</strong><code>/Applications/InputTimeline.app</code> 残留了早先 ad-hoc 签名的旧包（<code>Signature=adhoc</code>），而新编的 <code>Apple Development</code> 签名包只停留在 <code>dist/InputTimeline.app</code>。两者共享 <code>com.xiao.InputTimeline</code> 但签名身份冲突，LaunchServices 与系统设置同时暴露两份应用，且 <code>SMAppService.mainApp</code> 默认依赖 <code>/Applications/</code> 路径。"
+          ]},
+          { label: "最终解法（统一构建-安装-重启链路）", type: "list", items: [
+            "<strong>自动选用稳定签名身份：</strong>在 <code>build-app.sh</code> 中通过 <code>security find-identity -v -p codesigning</code> 优先选取本机 <code>Apple Development:</code>（其次 <code>Developer ID Application:</code>），携带 <code>--identifier \"$bundle_identifier\" --timestamp=none</code> 签名并用 <code>codesign --verify --deep --strict</code> 校验；仅当无可用证书时才回退 ad-hoc 并警告。",
+            "<strong>暂存目录构建 + 同步 <code>/Applications</code>：</strong>先在 <code>dist/.build-app.XXXXXX</code> 组装签名再原子替换 <code>dist/InputTimeline.app</code>，随后先结束旧进程，再用 <code>ditto</code> 覆盖更新 <code>/Applications/InputTimeline.app</code> 并复验签名（支持 <code>--no-install</code> 跳过）。",
+            "<strong>默认重启即用：</strong><code>build-app.sh</code> 默认在构建安装完成后以 <code>open -n /Applications/InputTimeline.app</code> 拉起新进程（支持 <code>--no-open</code> 关闭）；<code>open-app.sh</code> 也改为优先启动 <code>/Applications/InputTimeline.app</code>。"
+          ]},
+          { label: "可复用原则", type: "list", items: [
+            "<strong>依赖 TCC 权限或 <code>SMAppService</code> 登录项的 macOS 应用，构建脚本应一步打通「稳定签名 → 杀旧进程 → 同步 <code>/Applications</code> → 重启」</strong>，避免开发目录 <code>dist/</code> 与 <code>/Applications/</code> 长期双份并存。",
+            "<strong>首次从 ad-hoc 切到开发者证书时</strong>，需在「系统设置 → 输入监控」删掉旧条目并重新勾选一次，此后无论改代码重编多少次都会自动保留权限。"
+          ]},
+          { label: "代码位置", type: "text", content: "<code>InputTimeline/scripts/build-app.sh</code>、<code>InputTimeline/scripts/open-app.sh</code>。" }
+        ]
       }
     ];
 
