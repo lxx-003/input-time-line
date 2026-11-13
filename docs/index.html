@@ -1,0 +1,3264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InputTimeline — macOS 原生本地输入记录与时间线工具</title>
+  <meta name="description" content="macOS 原生本地输入记录工具 — 监听键盘与剪贴板，将每日输入活动保存为结构化 JSON，供回顾与分析。Swift 6 构建，MIT 开源，100% 本地离线。" />
+  <link rel="icon" type="image/png" href="./assets/icon_master.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-canvas: #FBFBFD;
+      --bg-surface: #FFFFFF;
+      --bg-secondary: #F2F4F8;
+      --bg-tertiary: #E8ECF2;
+      --ink-primary: #1D1D1F;
+      --ink-secondary: #515154;
+      --ink-tertiary: #595960;
+      --border-hairline: rgba(15, 23, 42, 0.08);
+      --border-control: rgba(15, 23, 42, 0.13);
+      --accent-blue: #0062CC;
+      --accent-orange: #FF9500;
+      --accent-green: #34C759;
+      --accent-red: #FF3B30;
+      --shadow-card: 0 4px 18px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.04);
+      --shadow-window: 0 28px 64px -14px rgba(15, 23, 42, 0.14), 0 8px 24px -4px rgba(15, 23, 42, 0.07), 0 0 0 1px rgba(15, 23, 42, 0.08);
+      --shadow-popover: 0 20px 44px -8px rgba(15, 23, 42, 0.18), 0 4px 14px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.08);
+      --font-sans: "Figtree", -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Helvetica Neue", sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      margin: 0;
+      background-color: var(--bg-canvas);
+      color: var(--ink-primary);
+      font-family: var(--font-sans);
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    ::selection {
+      background: rgba(0, 98, 204, 0.16);
+      color: var(--ink-primary);
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent-blue);
+      outline-offset: 2px;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    code, pre {
+      font-family: var(--font-mono);
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Navigation */
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(251, 251, 253, 0.82);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .nav-inner {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+      color: var(--ink-primary);
+    }
+
+    .brand img {
+      width: 26px;
+      height: 26px;
+      display: block;
+      filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.12));
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+    }
+
+    .nav-links a {
+      transition: color 0.15s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--ink-primary);
+    }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 13px;
+      border-radius: 999px;
+      background: var(--ink-primary);
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .nav-cta:hover {
+      background: #333336;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 64px 0 84px;
+      text-align: center;
+    }
+
+    .hero-icon-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .hero-icon {
+      width: 104px;
+      height: 104px;
+      display: block;
+      filter: drop-shadow(0 18px 30px rgba(15, 23, 42, 0.15)) drop-shadow(0 4px 10px rgba(15, 23, 42, 0.08));
+    }
+
+    .hero-title {
+      margin: 0 auto 14px;
+      font-size: clamp(36px, 5vw, 54px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--ink-primary);
+    }
+
+    .hero-subtitle {
+      max-width: 660px;
+      margin: 0 auto 22px;
+      font-size: clamp(17px, 2vw, 20px);
+      font-weight: 400;
+      line-height: 1.55;
+      color: var(--ink-secondary);
+    }
+
+    .hero-specs {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 8px 18px;
+      margin-bottom: 30px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-tertiary);
+    }
+
+    .hero-spec-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .spec-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-green);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 52px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 44px;
+      padding: 0 22px;
+      border-radius: 999px;
+      background: #0062CC;
+      color: #FFFFFF;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.14);
+      transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .btn-primary:hover {
+      background: #004FA6;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 44px;
+      padding: 0 20px;
+      border-radius: 999px;
+      background: var(--bg-surface);
+      color: var(--ink-primary);
+      font-size: 15px;
+      font-weight: 500;
+      border: 1px solid var(--border-control);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-secondary);
+      border-color: rgba(15, 23, 42, 0.2);
+    }
+
+    /* Showcase Switcher & Window Stage */
+    .showcase-wrap {
+      max-width: 1020px;
+      margin: 0 auto;
+      text-align: left;
+    }
+
+    .showcase-tabs-bar {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .mac-segmented {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: 10px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-hairline);
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .mac-segmented-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 16px;
+      border: none;
+      border-radius: 7.5px;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      transition: color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .mac-segmented-btn:hover {
+      color: var(--ink-primary);
+    }
+
+    .mac-segmented-btn.is-active {
+      background: var(--bg-surface);
+      color: var(--ink-primary);
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.09), 0 0 0 0.5px rgba(15, 23, 42, 0.05);
+    }
+
+    .showcase-stage {
+      position: relative;
+      min-height: 580px;
+    }
+
+    .view-panel {
+      display: none;
+    }
+
+    .view-panel.is-active {
+      display: block;
+    }
+
+    /* macOS Window Mockup: View 1 ContentView */
+    .mac-window {
+      position: relative;
+      background: var(--bg-surface);
+      border-radius: 14px;
+      box-shadow: var(--shadow-window);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 580px;
+    }
+
+    .mac-titlebar {
+      min-height: 52px;
+      background: #F6F7F9;
+      border-bottom: 1px solid var(--border-hairline);
+      display: grid;
+      grid-template-columns: 236px 1fr auto;
+      align-items: center;
+      padding: 12px 16px;
+      flex-shrink: 0;
+    }
+
+    .titlebar-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .traffic-lights {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .traffic-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.14);
+    }
+
+    .traffic-dot.red { background: #FF5F56; }
+    .traffic-dot.yellow { background: #FFBD2E; }
+    .traffic-dot.green { background: #27C93F; }
+
+    .win-title-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-primary);
+      letter-spacing: -0.01em;
+    }
+
+    .titlebar-center {
+      display: flex;
+      justify-content: center;
+    }
+
+    .toolbar-segmented {
+      display: inline-flex;
+      padding: 2px;
+      background: rgba(15, 23, 42, 0.06);
+      border-radius: 7px;
+      width: 230px;
+    }
+
+    .toolbar-seg-item {
+      flex: 1;
+      border: none;
+      background: transparent;
+      border-radius: 5.5px;
+      padding: 4px 0;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+      transition: all 0.14s ease;
+    }
+
+    .toolbar-seg-item.is-active {
+      background: #FFFFFF;
+      color: var(--ink-primary);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+    }
+
+    .titlebar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mac-search-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .mac-search-box svg {
+      position: absolute;
+      left: 8px;
+      color: var(--ink-tertiary);
+      pointer-events: none;
+    }
+
+    .mac-search-input {
+      width: 168px;
+      height: 28px;
+      padding: 0 10px 0 26px;
+      border-radius: 7px;
+      border: 1px solid rgba(15, 23, 42, 0.11);
+      background: #FFFFFF;
+      font-family: inherit;
+      font-size: 12px;
+      color: var(--ink-primary);
+      transition: border-color 0.15s ease, width 0.2s ease;
+    }
+
+    .mac-search-input::placeholder {
+      color: var(--ink-tertiary);
+    }
+
+    .mac-search-input:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(0, 98, 204, 0.16);
+    }
+
+    .mac-icon-btn {
+      height: 28px;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 7px;
+      border: 1px solid rgba(15, 23, 42, 0.11);
+      background: #FFFFFF;
+      color: var(--ink-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .mac-icon-btn:hover {
+      background: #F2F4F8;
+      color: var(--ink-primary);
+    }
+
+    .mac-split-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 236px 1fr;
+      min-height: 0;
+    }
+
+    .mac-sidebar {
+      background: #F5F6F8;
+      border-right: 1px solid var(--border-hairline);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .sidebar-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 10px;
+    }
+
+    .sidebar-section-title {
+      padding: 6px 10px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-tertiary);
+    }
+
+    .sidebar-day-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      margin-bottom: 2px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--ink-primary);
+      font-size: 12.5px;
+      font-variant-numeric: tabular-nums;
+      text-align: left;
+      transition: background-color 0.12s ease;
+    }
+
+    .sidebar-day-btn:hover {
+      background: rgba(15, 23, 42, 0.05);
+    }
+
+    .sidebar-day-btn.is-active {
+      background: #0062CC;
+      color: #FFFFFF;
+      font-weight: 500;
+    }
+
+    .sidebar-day-badge {
+      font-size: 11px;
+      color: var(--ink-tertiary);
+    }
+
+    .sidebar-day-btn.is-active .sidebar-day-badge {
+      color: #FFFFFF;
+    }
+
+    .sidebar-footer {
+      border-top: 1px solid var(--border-hairline);
+      padding: 9px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-green);
+    }
+
+    .status-dot.is-paused {
+      background: var(--ink-tertiary);
+    }
+
+    /* Native macOS Switch */
+    .mac-switch {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      width: 34px;
+      height: 20px;
+      border-radius: 999px;
+      border: none;
+      padding: 2px;
+      background: rgba(15, 23, 42, 0.18);
+      transition: background-color 0.18s ease;
+      flex-shrink: 0;
+    }
+
+    .mac-switch.is-mini {
+      width: 28px;
+      height: 16px;
+    }
+
+    .mac-switch.is-on {
+      background: var(--accent-blue);
+    }
+
+    .mac-switch.is-on.is-green {
+      background: var(--accent-green);
+    }
+
+    .mac-switch-knob {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+      transition: transform 0.18s ease;
+    }
+
+    .mac-switch.is-mini .mac-switch-knob {
+      width: 12px;
+      height: 12px;
+    }
+
+    .mac-switch.is-on .mac-switch-knob {
+      transform: translateX(14px);
+    }
+
+    .mac-switch.is-mini.is-on .mac-switch-knob {
+      transform: translateX(12px);
+    }
+
+    /* Detail Pane */
+    .mac-detail {
+      background: #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .detail-header {
+      padding: 15px 24px 12px;
+      border-bottom: 1px solid var(--border-hairline);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .detail-date-group {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .detail-date-title {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--ink-primary);
+    }
+
+    .detail-date-tag {
+      font-size: 12.5px;
+      color: var(--ink-tertiary);
+    }
+
+    .detail-counts {
+      font-size: 12px;
+      color: var(--ink-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .timeline-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+
+    .timeline-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 12px 24px;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+      transition: background-color 0.12s ease;
+    }
+
+    .timeline-row:last-child {
+      border-bottom: none;
+    }
+
+    .timeline-row:hover {
+      background: rgba(15, 23, 42, 0.025);
+    }
+
+    .row-time-gutter {
+      width: 118px;
+      flex-shrink: 0;
+      text-align: right;
+      padding-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .row-clock {
+      display: block;
+      font-size: 11.5px;
+      color: var(--ink-secondary);
+      line-height: 1.3;
+    }
+
+    .row-duration {
+      display: block;
+      font-size: 10.5px;
+      color: var(--ink-tertiary);
+      margin-top: 2px;
+    }
+
+    .row-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      margin-top: 6px;
+      flex-shrink: 0;
+    }
+
+    .row-dot.keyboard { background: var(--accent-blue); }
+    .row-dot.copy { background: var(--accent-orange); }
+    .row-dot.paste { background: var(--accent-green); }
+
+    .row-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .row-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .row-meta-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .row-kind {
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    .row-kind.keyboard { color: #0062CC; }
+    .row-kind.copy { color: #B45309; }
+    .row-kind.paste { color: #15803D; }
+
+    .row-meta-sep {
+      font-size: 11.5px;
+      color: var(--ink-tertiary);
+    }
+
+    .row-app-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+    }
+
+    .app-mini-icon {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #FFFFFF;
+      font-size: 8.5px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .row-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      opacity: 0;
+      transition: opacity 0.14s ease;
+    }
+
+    .timeline-row:hover .row-actions,
+    .row-actions.has-feedback {
+      opacity: 1;
+    }
+
+    .row-action-btn {
+      border: none;
+      background: transparent;
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+
+    .row-action-btn:hover {
+      background: rgba(15, 23, 42, 0.06);
+      color: var(--ink-primary);
+    }
+
+    .row-action-btn.copied {
+      color: #15803D;
+    }
+
+    .row-text {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink-primary);
+      word-break: break-word;
+    }
+
+    .ctrl-sym {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      margin: 0 1px;
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      color: var(--ink-secondary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      vertical-align: baseline;
+    }
+
+    .inspect-link {
+      margin-top: 4px;
+      border: none;
+      background: none;
+      padding: 0;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--accent-blue);
+    }
+
+    .inspect-link:hover {
+      text-decoration: underline;
+    }
+
+    .empty-filter-state {
+      padding: 64px 24px;
+      text-align: center;
+      color: var(--ink-secondary);
+      font-size: 13.5px;
+    }
+
+    /* Window Inline Sheet Modal (Inspect Full Text / Export JSON) */
+    .window-sheet-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.24);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 10;
+    }
+
+    .window-sheet-backdrop.is-open {
+      display: flex;
+    }
+
+    .window-sheet {
+      width: 100%;
+      max-width: 540px;
+      background: #FFFFFF;
+      border-radius: 12px;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .sheet-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(0, 98, 204, 0.11);
+      color: #0062CC;
+    }
+
+    .sheet-time {
+      font-size: 11.5px;
+      color: var(--ink-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .sheet-controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--ink-secondary);
+    }
+
+    .sheet-checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .sheet-pre {
+      margin: 0;
+      max-height: 210px;
+      overflow-y: auto;
+      padding: 13px 14px;
+      border-radius: 9px;
+      background: var(--bg-canvas);
+      border: 1px solid var(--border-hairline);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--ink-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .sheet-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .sheet-btn {
+      height: 30px;
+      padding: 0 13px;
+      border-radius: 7px;
+      border: 1px solid var(--border-control);
+      background: #FFFFFF;
+      color: var(--ink-primary);
+      font-size: 12.5px;
+      font-weight: 500;
+    }
+
+    .sheet-btn.primary {
+      background: #0062CC;
+      border-color: #0062CC;
+      color: #FFFFFF;
+    }
+
+    /* View 2: MenuBarExtra Desktop Mockup */
+    .menubar-stage {
+      height: 580px;
+      border-radius: 14px;
+      box-shadow: var(--shadow-window);
+      overflow: hidden;
+      background: linear-gradient(160deg, #E8EFF8 0%, #F3F5F9 48%, #E6ECF5 100%);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .macos-top-bar {
+      min-height: 40px;
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: var(--ink-primary);
+      user-select: none;
+    }
+
+    .macos-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-weight: 500;
+    }
+
+    .macos-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .menubar-icon-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 22px;
+      border-radius: 4px;
+      background: rgba(0, 98, 204, 0.14);
+      color: #0062CC;
+      border: none;
+    }
+
+    .menubar-popover-anchor {
+      position: relative;
+      flex: 1;
+      padding: 10px 74px 24px 24px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: flex-start;
+    }
+
+    .menubar-desktop-hint {
+      position: absolute;
+      left: 36px;
+      bottom: 32px;
+      max-width: 360px;
+      padding: 0;
+    }
+
+    .menubar-hint-title {
+      margin: 0 0 6px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink-primary);
+    }
+
+    .menubar-desktop-hint p {
+      margin: 0;
+      font-size: 13.5px;
+      color: var(--ink-secondary);
+      line-height: 1.55;
+    }
+
+    .menubar-popover {
+      width: 286px;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: saturate(180%) blur(24px);
+      border-radius: 11px;
+      padding: 6px;
+      box-shadow: var(--shadow-popover);
+    }
+
+    .menu-status-row {
+      padding: 6px 10px;
+      font-size: 12px;
+      color: var(--ink-secondary);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .menu-divider {
+      height: 1px;
+      background: var(--border-hairline);
+      margin: 5px 6px;
+    }
+
+    .menu-item-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      font-size: 13px;
+      color: var(--ink-primary);
+      text-align: left;
+      transition: background-color 0.1s ease, color 0.1s ease;
+    }
+
+    .menu-item-btn:hover {
+      background: #0062CC;
+      color: #FFFFFF;
+    }
+
+    .menu-shortcut {
+      font-size: 11.5px;
+      color: var(--ink-tertiary);
+    }
+
+    .menu-item-btn:hover .menu-shortcut {
+      color: #FFFFFF;
+    }
+
+    /* View 3: SettingsView */
+    .settings-stage {
+      height: 580px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .settings-window {
+      width: 100%;
+      max-width: 540px;
+      background: #F4F5F7;
+      border-radius: 12px;
+      box-shadow: var(--shadow-window);
+      overflow: hidden;
+    }
+
+    .settings-titlebar {
+      min-height: 44px;
+      background: #F8F9FA;
+      border-bottom: 1px solid var(--border-hairline);
+      display: flex;
+      align-items: center;
+      padding: 11px 16px;
+      position: relative;
+    }
+
+    .settings-titlebar-label {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-primary);
+    }
+
+    .settings-body {
+      padding: 16px 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .settings-group-label {
+      margin: 0 20px 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-secondary);
+    }
+
+    .settings-group-card {
+      background: #FFFFFF;
+      border-top: 1px solid var(--border-hairline);
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 20px;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+      font-size: 13px;
+    }
+
+    .settings-row:last-child {
+      border-bottom: none;
+    }
+
+    .settings-group-footer {
+      margin: 6px 20px 0;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--ink-tertiary);
+    }
+
+    .stepper-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stepper-value {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+      font-variant-numeric: tabular-nums;
+      min-width: 38px;
+      text-align: right;
+    }
+
+    .mac-stepper-pair {
+      display: inline-flex;
+      border: 1px solid var(--border-control);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #FFFFFF;
+    }
+
+    .mac-stepper-pair button {
+      width: 24px;
+      height: 22px;
+      border: none;
+      background: #FFFFFF;
+      color: var(--ink-primary);
+      font-size: 14px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mac-stepper-pair button:first-child {
+      border-right: 1px solid var(--border-hairline);
+    }
+
+    .mac-stepper-pair button:hover:not(:disabled) {
+      background: var(--bg-secondary);
+    }
+
+    .mac-stepper-pair button:disabled {
+      color: var(--ink-tertiary);
+      cursor: not-allowed;
+    }
+
+    .perm-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12.5px;
+      color: var(--ink-secondary);
+    }
+
+    .settings-inline-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mac-small-btn {
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border-control);
+      background: #FFFFFF;
+      font-size: 12px;
+      color: var(--ink-primary);
+    }
+
+    .mac-small-btn:hover {
+      background: var(--bg-secondary);
+    }
+
+    .path-text {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 240px;
+    }
+
+    /* Section Commons */
+    .section {
+      padding: 84px 0;
+    }
+
+    .section-alt {
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border-hairline);
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .section-header {
+      max-width: 680px;
+      margin: 0 auto 48px;
+      text-align: center;
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 3.6vw, 38px);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.18;
+      color: var(--ink-primary);
+    }
+
+    .section-lead {
+      margin: 0;
+      font-size: 16.5px;
+      line-height: 1.6;
+      color: var(--ink-secondary);
+    }
+
+    /* 4 Pillars Grid */
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    .pillar-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-lg);
+      padding: 30px;
+      box-shadow: var(--shadow-card);
+    }
+
+    .pillar-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .pillar-icon {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .pillar-icon.blue { color: #0062CC; }
+    .pillar-icon.orange { color: #C26D00; }
+    .pillar-icon.green { color: #15803D; }
+    .pillar-icon.red { color: #C81E1E; }
+
+    .pillar-card h3 {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--ink-primary);
+    }
+
+    .pillar-card p {
+      margin: 0 0 16px;
+      font-size: 14.5px;
+      line-height: 1.65;
+      color: var(--ink-secondary);
+    }
+
+    .pillar-specs {
+      margin: 0;
+      padding: 14px 0 0;
+      list-style: none;
+      border-top: 1px solid var(--border-hairline);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13.5px;
+      color: var(--ink-secondary);
+    }
+
+    .pillar-specs li {
+      position: relative;
+      padding-left: 14px;
+      line-height: 1.55;
+    }
+
+    .pillar-specs li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 9px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--ink-tertiary);
+    }
+
+    .pillar-specs code {
+      font-size: 12.5px;
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: var(--bg-secondary);
+      color: var(--ink-primary);
+    }
+
+    /* Data Schema & Control Char Section */
+    .schema-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .code-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .code-panel-head {
+      padding: 12px 18px;
+      background: #F6F7F9;
+      border-bottom: 1px solid var(--border-hairline);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .code-panel-path {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--ink-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .copy-code-btn {
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-control);
+      background: #FFFFFF;
+      color: var(--ink-primary);
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+      transition: background-color 0.14s ease, color 0.14s ease;
+    }
+
+    .copy-code-btn:hover {
+      background: var(--bg-secondary);
+    }
+
+    .copy-code-btn.is-copied {
+      color: #249F43;
+      border-color: rgba(52, 199, 89, 0.4);
+    }
+
+    .code-block {
+      margin: 0;
+      padding: 20px;
+      font-size: 12.5px;
+      line-height: 1.65;
+      color: var(--ink-primary);
+      overflow-x: auto;
+      flex: 1;
+    }
+
+    .tok-key { color: #005CC5; }
+    .tok-str { color: #1E7E34; }
+    .tok-num { color: #C2410C; }
+    .tok-cm { color: var(--ink-tertiary); }
+
+    .ctrl-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
+      padding: 26px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .ctrl-panel h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .ctrl-panel p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--ink-secondary);
+    }
+
+    .ctrl-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+
+    .ctrl-table th,
+    .ctrl-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border-hairline);
+      text-align: left;
+    }
+
+    .ctrl-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .ctrl-table th {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-tertiary);
+    }
+
+    .legend-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-hairline);
+      font-size: 13px;
+      color: var(--ink-secondary);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* Architecture Diagram */
+    .arch-frame {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-card);
+    }
+
+    .arch-svg-scroll {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .arch-svg {
+      width: 100%;
+      min-width: 780px;
+      height: auto;
+      display: block;
+    }
+
+    .arch-legend {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-hairline);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--ink-secondary);
+    }
+
+    .arch-legend-items {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .arch-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .arch-line-sample {
+      width: 18px;
+      height: 2px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .arch-line-sample.solid {
+      background: #1D1D1F;
+    }
+
+    .arch-line-sample.blue {
+      background: #0062CC;
+    }
+
+    /* Build & AI Skill Grid */
+    .build-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 32px;
+    }
+
+    .build-card {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .build-card h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--ink-primary);
+    }
+
+    .build-card p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--ink-secondary);
+    }
+
+    .terminal-box {
+      background: #F6F7F9;
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .terminal-head {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-hairline);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--ink-tertiary);
+      font-family: var(--font-mono);
+    }
+
+    .terminal-pre {
+      margin: 0;
+      padding: 14px;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--ink-primary);
+      overflow-x: auto;
+    }
+
+    /* FAQ */
+    .faq-list {
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    .faq-item {
+      border-top: 1px solid var(--border-hairline);
+    }
+
+    .faq-item:last-child {
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .faq-trigger {
+      width: 100%;
+      padding: 18px 12px;
+      border: none;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      text-align: left;
+      font-size: 15.5px;
+      font-weight: 600;
+      color: var(--ink-primary);
+      transition: background-color 0.14s ease;
+    }
+
+    .faq-trigger:hover {
+      background: rgba(15, 23, 42, 0.02);
+    }
+
+    .faq-chevron {
+      color: var(--ink-tertiary);
+      transition: transform 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .faq-item.is-open .faq-chevron {
+      transform: rotate(180deg);
+    }
+
+    .faq-answer {
+      display: none;
+      padding: 0 12px 18px;
+      font-size: 14.5px;
+      line-height: 1.65;
+      color: var(--ink-secondary);
+    }
+
+    .faq-item.is-open .faq-answer {
+      display: block;
+    }
+
+    .faq-answer code {
+      font-size: 12.5px;
+      padding: 1px 6px;
+      border-radius: 5px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      color: var(--ink-primary);
+    }
+
+    /* Toast */
+    .toast-banner {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: rgba(29, 29, 31, 0.92);
+      color: #FFFFFF;
+      padding: 9px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 60;
+    }
+
+    .toast-banner.is-visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Footer */
+    .site-footer {
+      border-top: 1px solid var(--border-hairline);
+      padding: 34px 0;
+      font-size: 13px;
+      color: var(--ink-tertiary);
+    }
+
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .footer-links a:hover {
+      color: var(--ink-primary);
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .nav-links {
+        display: none;
+      }
+
+      .mac-titlebar {
+        grid-template-columns: auto 1fr;
+        gap: 10px;
+      }
+
+      .titlebar-right {
+        display: none;
+      }
+
+      .mac-split-body {
+        grid-template-columns: 184px 1fr;
+      }
+
+      .row-time-gutter {
+        width: 94px;
+      }
+
+      .pillars-grid,
+      .schema-grid,
+      .build-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hero {
+        padding: 44px 0 60px;
+      }
+
+      .mac-window,
+      .menubar-stage,
+      .settings-stage {
+        height: auto;
+        min-height: 520px;
+      }
+
+      .mac-split-body {
+        grid-template-columns: 1fr;
+      }
+
+      .mac-sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border-hairline);
+        max-height: 170px;
+      }
+
+      .menubar-desktop-hint {
+        display: none;
+      }
+
+      .menubar-popover-anchor {
+        padding: 16px;
+        justify-content: center;
+      }
+
+      .mac-segmented {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .section {
+        padding: 60px 0;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#top">
+        <img src="./assets/icon_master.png" alt="InputTimeline 应用图标" />
+        <span>InputTimeline</span>
+      </a>
+      <nav class="nav-links" aria-label="页面导航">
+        <a href="#showcase">界面预览</a>
+        <a href="#features">核心特性</a>
+        <a href="#data-format">数据格式</a>
+        <a href="#architecture">系统架构</a>
+        <a href="#quickstart">本地构建</a>
+        <a href="#faq">常见问题</a>
+      </nav>
+      <a class="nav-cta" href="https://github.com/lxx-003/input-time-line" target="_blank" rel="noopener noreferrer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 1.27a11 11 0 0 0-3.48 21.46c.55.1.73-.24.73-.53v-1.85c-3.03.66-3.67-1.45-3.67-1.45-.5-1.26-1.21-1.6-1.21-1.6-.99-.68.08-.66.08-.66 1.09.08 1.67 1.12 1.67 1.12.97 1.66 2.54 1.18 3.16.9.1-.7.38-1.18.69-1.45-2.42-.28-4.96-1.21-4.96-5.4 0-1.19.42-2.16 1.12-2.92-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3 1.12a10.4 10.4 0 0 1 5.46 0c2.08-1.41 3-1.12 3-1.12.6 1.51.22 2.63.11 2.91.7.76 1.12 1.73 1.12 2.92 0 4.2-2.55 5.12-4.98 5.39.39.34.74 1.01.74 2.04v3.02c0 .29.19.63.74.53A11 11 0 0 0 12 1.27Z"/>
+        </svg>
+        <span>GitHub 开源</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container">
+        <div class="hero-icon-wrap">
+          <img class="hero-icon" src="./assets/icon_master.png" alt="InputTimeline 图标：白色按键帽配合录制红点与蓝橙绿三色状态条" />
+        </div>
+
+        <h1 class="hero-title">InputTimeline</h1>
+        <p class="hero-subtitle">
+          macOS 原生本地输入记录工具 — 监听键盘与剪贴板，将每日输入活动保存为结构化 JSON，供回顾与分析。
+        </p>
+
+        <div class="hero-specs" aria-label="技术规格">
+          <span class="hero-spec-item"><span class="spec-dot" aria-hidden="true"></span>100% 本地离线 · 零网络请求</span>
+          <span class="hero-spec-item">macOS 13+</span>
+          <span class="hero-spec-item">Swift 6 (SwiftUI + AppKit)</span>
+          <span class="hero-spec-item">MIT 开源免费</span>
+        </div>
+
+        <div class="hero-actions">
+          <a class="btn-primary" href="https://github.com/lxx-003/input-time-line" target="_blank" rel="noopener noreferrer">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 1.27a11 11 0 0 0-3.48 21.46c.55.1.73-.24.73-.53v-1.85c-3.03.66-3.67-1.45-3.67-1.45-.5-1.26-1.21-1.6-1.21-1.6-.99-.68.08-.66.08-.66 1.09.08 1.67 1.12 1.67 1.12.97 1.66 2.54 1.18 3.16.9.1-.7.38-1.18.69-1.45-2.42-.28-4.96-1.21-4.96-5.4 0-1.19.42-2.16 1.12-2.92-.11-.28-.49-1.4.11-2.91 0 0 .92-.29 3 1.12a10.4 10.4 0 0 1 5.46 0c2.08-1.41 3-1.12 3-1.12.6 1.51.22 2.63.11 2.91.7.76 1.12 1.73 1.12 2.92 0 4.2-2.55 5.12-4.98 5.39.39.34.74 1.01.74 2.04v3.02c0 .29.19.63.74.53A11 11 0 0 0 12 1.27Z"/>
+            </svg>
+            <span>获取 GitHub 源码</span>
+          </a>
+          <a class="btn-secondary" href="#quickstart">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+            <span>本地构建指南</span>
+          </a>
+        </div>
+
+        <!-- Interactive 3-View macOS Window Showcase -->
+        <div class="showcase-wrap" id="showcase">
+          <div class="showcase-tabs-bar">
+            <div class="mac-segmented" role="tablist" aria-label="应用界面预览切换">
+              <button class="mac-segmented-btn is-active" type="button" role="tab" aria-selected="true" data-view="main">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2.5"></rect>
+                  <line x1="9" y1="4" x2="9" y2="20"></line>
+                </svg>
+                <span>主时间线窗口</span>
+              </button>
+              <button class="mac-segmented-btn" type="button" role="tab" aria-selected="false" data-view="menubar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="4" rx="1"></rect>
+                  <rect x="11" y="10" width="10" height="10" rx="2"></rect>
+                </svg>
+                <span>菜单栏弹出</span>
+              </button>
+              <button class="mac-segmented-btn" type="button" role="tab" aria-selected="false" data-view="settings">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path>
+                </svg>
+                <span>偏好设置</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="showcase-stage">
+            <!-- View 1: Main Timeline Window (ContentView) -->
+            <div class="view-panel is-active" id="panel-main" role="tabpanel">
+              <div class="mac-window">
+                <div class="mac-titlebar">
+                  <div class="titlebar-left">
+                    <div class="traffic-lights" aria-hidden="true">
+                      <span class="traffic-dot red"></span>
+                      <span class="traffic-dot yellow"></span>
+                      <span class="traffic-dot green"></span>
+                    </div>
+                    <span class="win-title-label">Input Timeline</span>
+                  </div>
+
+                  <div class="titlebar-center">
+                    <div class="toolbar-segmented" role="group" aria-label="事件类型筛选">
+                      <button class="toolbar-seg-item is-active" type="button" data-kind="全部">全部</button>
+                      <button class="toolbar-seg-item" type="button" data-kind="键盘">键盘</button>
+                      <button class="toolbar-seg-item" type="button" data-kind="复制">复制</button>
+                      <button class="toolbar-seg-item" type="button" data-kind="粘贴">粘贴</button>
+                    </div>
+                  </div>
+
+                  <div class="titlebar-right">
+                    <div class="mac-search-box">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input id="demo-search-input" class="mac-search-input" type="search" placeholder="搜索文本或应用" aria-label="搜索文本或应用" />
+                    </div>
+                    <button id="demo-export-btn" class="mac-icon-btn" type="button" title="导出当前日期 JSON">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+                        <polyline points="7 9 12 4 17 9"></polyline>
+                        <line x1="12" y1="4" x2="12" y2="16"></line>
+                      </svg>
+                      <span>导出 JSON</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mac-split-body">
+                  <aside class="mac-sidebar" aria-label="历史日期侧栏">
+                    <div class="sidebar-scroll" id="demo-sidebar-days">
+                      <div class="sidebar-section-title">最近</div>
+                      <button class="sidebar-day-btn is-active" type="button" data-day="2026-11-13">
+                        <span>2026 年 11 月 13 日</span>
+                        <span class="sidebar-day-badge">今天</span>
+                      </button>
+                      <button class="sidebar-day-btn" type="button" data-day="2026-11-12">
+                        <span>2026 年 11 月 12 日</span>
+                        <span class="sidebar-day-badge">昨天</span>
+                      </button>
+                      <div class="sidebar-section-title" style="margin-top: 10px;">近 7 天</div>
+                      <button class="sidebar-day-btn" type="button" data-day="2026-11-11">
+                        <span>2026 年 11 月 11 日</span>
+                        <span class="sidebar-day-badge">周三</span>
+                      </button>
+                    </div>
+                    <div class="sidebar-footer">
+                      <div class="status-indicator">
+                        <span class="status-dot" id="demo-footer-dot"></span>
+                        <span id="demo-footer-status">正在记录</span>
+                      </div>
+                      <button class="mac-switch is-mini is-on" id="demo-recording-switch" type="button" role="switch" aria-checked="true" aria-label="切换记录状态">
+                        <span class="mac-switch-knob"></span>
+                      </button>
+                    </div>
+                  </aside>
+
+                  <div class="mac-detail">
+                    <div class="detail-header">
+                      <div class="detail-date-group">
+                        <div class="win-day-title detail-date-title" id="demo-detail-title">2026 年 11 月 13 日</div>
+                        <span class="detail-date-tag" id="demo-detail-tag">今天 · 星期五</span>
+                      </div>
+                      <div class="detail-counts" id="demo-detail-counts">
+                        共 24 条 · 键盘 14 · 复制 6 · 粘贴 4
+                      </div>
+                    </div>
+
+                    <div class="timeline-scroll" id="demo-timeline-list"></div>
+                  </div>
+                </div>
+
+                <!-- Sheet Modal inside ContentView -->
+                <div class="window-sheet-backdrop" id="demo-sheet-backdrop" aria-hidden="true">
+                  <div class="window-sheet" role="dialog" aria-modal="true" aria-labelledby="demo-sheet-kind">
+                    <div class="sheet-head">
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="sheet-pill" id="demo-sheet-kind">键盘</span>
+                        <span class="row-app-badge" id="demo-sheet-app"></span>
+                      </div>
+                      <span class="sheet-time" id="demo-sheet-time"></span>
+                    </div>
+                    <div class="sheet-controls-row">
+                      <span id="demo-sheet-chars">共 0 个字符</span>
+                      <label class="sheet-checkbox-label">
+                        <input type="checkbox" id="demo-sheet-visual-toggle" checked />
+                        <span>可视化控制符（↩ ⌫ →）</span>
+                      </label>
+                    </div>
+                    <pre class="sheet-pre" id="demo-sheet-text"></pre>
+                    <div class="sheet-footer">
+                      <button class="sheet-btn" type="button" id="demo-sheet-copy">复制完整原文</button>
+                      <button class="sheet-btn primary" type="button" id="demo-sheet-close">关闭</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- View 2: MenuBarExtra Popover -->
+            <div class="view-panel" id="panel-menubar" role="tabpanel">
+              <div class="menubar-stage">
+                <div class="macos-top-bar">
+                  <div class="macos-bar-left">
+                    <svg width="13" height="15" viewBox="0 0 170 170" fill="currentColor" aria-hidden="true">
+                      <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.13-1.9-14.34-6.08-3.69-3.03-7.61-7.82-11.77-14.37-5.94-9.26-10.72-19.86-14.34-31.8-3.62-11.94-5.43-23.38-5.43-34.33 0-12.7 3.18-23.51 9.54-32.42 6.36-8.91 14.32-13.52 23.89-13.84 4.71 0 10.17 1.46 16.38 4.38 6.21 2.92 10.23 4.41 12.06 4.48 1.45 0 5.87-1.72 13.26-5.16 7.39-3.44 13.64-4.88 18.74-4.31 13.84 1.12 24.27 6.61 31.29 16.47-12.44 7.55-18.56 18.08-18.34 31.59.22 10.55 4.05 19.34 11.5 26.37 5.25 4.94 11.4 7.97 18.46 9.1-.77 2.47-1.62 4.86-2.57 7.17ZM119.22 31.1c0 8.15-2.98 15.76-8.94 22.84-7.18 8.4-15.86 13.25-25.27 12.48-.12-.97-.19-2.01-.19-3.12 0-7.84 3.41-16.22 9.48-23.09 3.01-3.47 6.84-6.36 11.49-8.68 4.65-2.31 9.05-3.59 13.2-3.83.15 1.14.23 2.28.23 3.4Z"/>
+                    </svg>
+                    <strong style="font-weight:700;">InputTimeline</strong>
+                    <span>文件</span>
+                    <span>编辑</span>
+                    <span>视图</span>
+                    <span>窗口</span>
+                  </div>
+                  <div class="macos-bar-right">
+                    <button class="menubar-icon-trigger" type="button" title="InputTimeline 菜单栏图标">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <rect x="2" y="5" width="20" height="14" rx="2.5"></rect>
+                        <line x1="6" y1="10" x2="6.01" y2="10"></line>
+                        <line x1="10" y1="10" x2="10.01" y2="10"></line>
+                        <line x1="14" y1="10" x2="14.01" y2="10"></line>
+                        <line x1="18" y1="10" x2="18.01" y2="10"></line>
+                        <line x1="7" y1="15" x2="17" y2="15"></line>
+                      </svg>
+                    </button>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                      <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                      <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                    </svg>
+                    <span>11月13日 周五 14:26</span>
+                  </div>
+                </div>
+
+                <div class="menubar-popover-anchor">
+                  <div class="menubar-desktop-hint">
+                    <div class="menubar-hint-title">MenuBarExtra 菜单栏常驻</div>
+                    <p>
+                      无需切换窗口，点击顶部菜单栏键盘图标即可查看当天采集状态与记录总数，支持一键暂停记录、打开主窗口或直接呼出偏好设置。
+                    </p>
+                  </div>
+
+                  <div class="menubar-popover" role="menu" aria-label="InputTimeline 菜单栏弹出菜单">
+                    <div class="menu-status-row">
+                      <span class="status-dot" id="menubar-status-dot"></span>
+                      <span id="menubar-status-text">状态：正在记录 · 2026-11-13 (24 条)</span>
+                    </div>
+                    <div class="menu-divider"></div>
+                    <button class="menu-item-btn" type="button" id="menubar-toggle-record">
+                      <span id="menubar-toggle-label">暂停记录</span>
+                    </button>
+                    <div class="menu-divider"></div>
+                    <button class="menu-item-btn" type="button" data-jump-view="main">
+                      <span>打开主窗口</span>
+                    </button>
+                    <button class="menu-item-btn" type="button" data-jump-view="settings">
+                      <span>设置...</span>
+                      <span class="menu-shortcut">⌘,</span>
+                    </button>
+                    <div class="menu-divider"></div>
+                    <button class="menu-item-btn" type="button" id="menubar-quit-btn">
+                      <span>退出 InputTimeline</span>
+                      <span class="menu-shortcut">⌘Q</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- View 3: SettingsView -->
+            <div class="view-panel" id="panel-settings" role="tabpanel">
+              <div class="settings-stage">
+                <div class="settings-window">
+                  <div class="settings-titlebar">
+                    <div class="traffic-lights" aria-hidden="true">
+                      <span class="traffic-dot red"></span>
+                      <span class="traffic-dot yellow"></span>
+                      <span class="traffic-dot green"></span>
+                    </div>
+                    <span class="settings-titlebar-label">设置</span>
+                  </div>
+
+                  <div class="settings-body">
+                    <div>
+                      <div class="settings-group-label">采集与分段</div>
+                      <div class="settings-group-card">
+                        <div class="settings-row">
+                          <span>开启键盘与剪贴板记录</span>
+                          <button class="mac-switch is-on" id="settings-record-switch" type="button" role="switch" aria-checked="true" aria-label="开启键盘与剪贴板记录">
+                            <span class="mac-switch-knob"></span>
+                          </button>
+                        </div>
+                        <div class="settings-row">
+                          <span>键盘静默分段间隔</span>
+                          <div class="stepper-control">
+                            <span class="stepper-value" id="stepper-seconds-label">2 秒</span>
+                            <div class="mac-stepper-pair">
+                              <button type="button" id="stepper-minus" aria-label="减少静默分段间隔">-</button>
+                              <button type="button" id="stepper-plus" aria-label="增加静默分段间隔">+</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <p class="settings-group-footer">
+                        连续按键超过该静默时长，或切换前台应用时，将自动切分为新的时间线记录（可调范围 1–10 秒）。
+                      </p>
+                    </div>
+
+                    <div>
+                      <div class="settings-group-label">系统集成</div>
+                      <div class="settings-group-card">
+                        <div class="settings-row">
+                          <span>开机自动启动</span>
+                          <button class="mac-switch is-on" id="settings-login-switch" type="button" role="switch" aria-checked="true" aria-label="开机自动启动">
+                            <span class="mac-switch-knob"></span>
+                          </button>
+                        </div>
+                        <div class="settings-row">
+                          <span>输入监控权限</span>
+                          <div class="settings-inline-actions">
+                            <span class="perm-badge">
+                              <span class="status-dot"></span>
+                              <span>已授权</span>
+                            </span>
+                            <button class="mac-small-btn" type="button" data-toast="将在本地打开「系统设置 → 隐私与安全性 → 输入监控」">系统设置</button>
+                            <button class="mac-small-btn" type="button" data-toast="权限检测完成：输入监控已授权">重新检查</button>
+                          </div>
+                        </div>
+                      </div>
+                      <p class="settings-group-footer">
+                        登录项需安装到「应用程序」目录；若未生效，请在「系统设置 → 通用 → 登录项」中允许。
+                      </p>
+                    </div>
+
+                    <div>
+                      <div class="settings-group-label">存储与隐私</div>
+                      <div class="settings-group-card">
+                        <div class="settings-row">
+                          <span>数据目录</span>
+                          <div class="settings-inline-actions">
+                            <span class="path-text" title="~/Library/Application Support/InputTimeline">~/Library/Application Support/InputTimeline</span>
+                            <button class="mac-small-btn" type="button" data-toast="将在 Finder 中显示 ~/Library/Application Support/InputTimeline">打开目录</button>
+                          </div>
+                        </div>
+                      </div>
+                      <p class="settings-group-footer">
+                        所有输入记录仅保存在本地 JSON 文件中；密码框等安全输入域通常不会被系统提供内容。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 Pillars Feature Breakdown -->
+    <section class="section section-alt" id="features">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">专为 macOS 打造，克制而精准</h2>
+          <p class="section-lead">
+            基于 Swift 6、SwiftUI 与 AppKit 原生构建，不依赖浏览器内核，后台安静运行且只保留可验证的本地数据。
+          </p>
+        </div>
+
+        <div class="pillars-grid">
+          <article class="pillar-card">
+            <div class="pillar-header">
+              <div class="pillar-icon blue">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="5" width="20" height="14" rx="2.5"></rect>
+                  <line x1="6" y1="10" x2="6.01" y2="10"></line>
+                  <line x1="10" y1="10" x2="10.01" y2="10"></line>
+                  <line x1="14" y1="10" x2="14.01" y2="10"></line>
+                  <line x1="18" y1="10" x2="18.01" y2="10"></line>
+                  <line x1="7" y1="15" x2="17" y2="15"></line>
+                </svg>
+              </div>
+              <h3>键盘智能分段与应用上下文</h3>
+            </div>
+            <p>
+              采用系统级 <code>CGEvent</code> listen-only tap 只读监听按键，绝不修改或拦截输入；结合静默间隔与前台应用切换自动切分输入段。
+            </p>
+            <ul class="pillar-specs">
+              <li>静默分段间隔默认 <code>2 秒</code>，可在偏好设置中按 <code>1–10 秒</code> 调节</li>
+              <li>通过 <code>NSWorkspace</code> 识别前台应用名称与图标，切换应用即刻拆段</li>
+              <li>仅申请「输入监控」权限，密码框等安全输入域受系统隔离保护</li>
+            </ul>
+          </article>
+
+          <article class="pillar-card">
+            <div class="pillar-header">
+              <div class="pillar-icon orange">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </div>
+              <h3>剪贴板捕获与三色时间线</h3>
+            </div>
+            <p>
+              准确识别 <code>⌘C</code> 复制与 <code>⌘V</code> 粘贴快捷键并读取剪贴板纯文本，配合三色语义圆点在单条时间线上清晰分辨事件类型。
+            </p>
+            <ul class="pillar-specs">
+              <li>蓝（<code>#007AFF</code> 键盘）、橙（<code>#FF9500</code> 复制）、绿（<code>#34C759</code> 粘贴）直观区隔</li>
+              <li>支持控制字符可视化（<code>⌫</code> <code>↩</code> <code>↵</code> <code>→</code> <code>⎋</code>）与超长文本详情弹窗</li>
+              <li>悬停每条记录即可一键复制原文，完整还原输入过程</li>
+            </ul>
+          </article>
+
+          <article class="pillar-card">
+            <div class="pillar-header">
+              <div class="pillar-icon green">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="8" y1="13" x2="16" y2="13"></line>
+                  <line x1="8" y1="17" x2="13" y2="17"></line>
+                </svg>
+              </div>
+              <h3>按日本地 JSON 存储与快速检索</h3>
+            </div>
+            <p>
+              所有记录 100% 离线存储在你的 Mac 本机，按自然日生成结构化 JSON 文件，绝不发起任何网络请求或遥测上传。
+            </p>
+            <ul class="pillar-specs">
+              <li>存储路径：<code>~/Library/Application Support/InputTimeline/&lt;YYYY-MM-DD&gt;.json</code></li>
+              <li>侧栏按「最近 / 近 7 天 / 更早记录」自动分组，支持关键词与类型筛选</li>
+              <li>工具栏一键呼出系统 <code>NSSavePanel</code> 导出任意日期完整 JSON</li>
+            </ul>
+          </article>
+
+          <article class="pillar-card">
+            <div class="pillar-header">
+              <div class="pillar-icon red">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <polyline points="12 7 12 12 15.5 14"></polyline>
+                </svg>
+              </div>
+              <h3>菜单栏常驻与 AI 复盘技能</h3>
+            </div>
+            <p>
+              <code>MenuBarExtra</code> 随时查看当日记录条数并快速切换采集状态；搭配仓库内置分析技能，让 AI 助你快速梳理每日工作脉络。
+            </p>
+            <ul class="pillar-specs">
+              <li>支持系统登录项开机自启（默认开启），安装后持续陪伴工作流</li>
+              <li>内置 <code>.cursor/skills/analyze-input-timeline/</code> 技能定义</li>
+              <li>提供 <code>parse_timeline.py</code> 与 <code>chunk_timeline.py</code> 进行清洗与分块</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Data Format & Control Character Mapping -->
+    <section class="section" id="data-format">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">透明的按日 JSON 数据格式</h2>
+          <p class="section-lead">
+            开放、人类可读且便于脚本处理的纯本地 JSON 结构，无论直接归档、二次开发还是交由 AI 复盘都清晰可靠。
+          </p>
+        </div>
+
+        <div class="schema-grid">
+          <div class="code-panel">
+            <div class="code-panel-head">
+              <span class="code-panel-path">~/Library/Application Support/InputTimeline/2026-11-13.json</span>
+              <button class="copy-code-btn" type="button" data-copy-target="json-sample-code">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>复制示例</span>
+              </button>
+            </div>
+            <pre class="code-block" id="json-sample-code">{
+  <span class="tok-key">"date"</span>: <span class="tok-str">"2026-11-13"</span>,
+  <span class="tok-key">"silenceGapSeconds"</span>: <span class="tok-num">2</span>,
+  <span class="tok-key">"items"</span>: [
+    {
+      <span class="tok-key">"kind"</span>: <span class="tok-str">"键盘"</span>,
+      <span class="tok-key">"start"</span>: <span class="tok-str">"2026-11-13 10:00:00"</span>,
+      <span class="tok-key">"end"</span>: <span class="tok-str">"2026-11-13 10:00:05"</span>,
+      <span class="tok-key">"appName"</span>: <span class="tok-str">"Cursor"</span>,
+      <span class="tok-key">"text"</span>: <span class="tok-str">"func fetchTimeline()\r"</span>
+    },
+    {
+      <span class="tok-key">"kind"</span>: <span class="tok-str">"复制"</span>,
+      <span class="tok-key">"at"</span>: <span class="tok-str">"2026-11-13 10:01:00"</span>,
+      <span class="tok-key">"text"</span>: <span class="tok-str">"copied text"</span>
+    },
+    {
+      <span class="tok-key">"kind"</span>: <span class="tok-str">"粘贴"</span>,
+      <span class="tok-key">"at"</span>: <span class="tok-str">"2026-11-13 10:01:03"</span>,
+      <span class="tok-key">"text"</span>: <span class="tok-str">"pasted text"</span>
+    }
+  ]
+}</pre>
+          </div>
+
+          <div class="ctrl-panel">
+            <div>
+              <h3>控制字符可视化映射</h3>
+              <p>
+                JSON 原文忠实保留退格、回车、制表符等按键控制字符；主窗口、原文检视弹窗与 <code>parse_timeline.py</code> 会将其转换为易读符号。
+              </p>
+            </div>
+
+            <table class="ctrl-table" aria-label="控制字符映射表">
+              <thead>
+                <tr>
+                  <th>原始字符</th>
+                  <th>显示符号</th>
+                  <th>按键含义</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>\b</code> (<code>\u0008</code>)</td>
+                  <td><span class="ctrl-sym">⌫</span></td>
+                  <td>退格删除 (Backspace)</td>
+                </tr>
+                <tr>
+                  <td><code>\r</code></td>
+                  <td><span class="ctrl-sym">↩</span></td>
+                  <td>回车确认 (Return)</td>
+                </tr>
+                <tr>
+                  <td><code>\n</code></td>
+                  <td><span class="ctrl-sym">↵</span></td>
+                  <td>换行符 (Newline)</td>
+                </tr>
+                <tr>
+                  <td><code>\t</code></td>
+                  <td><span class="ctrl-sym">→</span></td>
+                  <td>制表缩进 (Tab)</td>
+                </tr>
+                <tr>
+                  <td><code>ESC</code> (<code>\u001B</code>)</td>
+                  <td><span class="ctrl-sym">⎋</span></td>
+                  <td>退出 / 取消 (Escape)</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="legend-row" aria-label="事件类型配色说明">
+              <span class="legend-item"><span class="legend-dot" style="background:var(--accent-blue);"></span>键盘 <code>#007AFF</code></span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--accent-orange);"></span>复制 <code>#FF9500</code></span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--accent-green);"></span>粘贴 <code>#34C759</code></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture Diagram -->
+    <section class="section section-alt" id="architecture">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">系统架构一目了然</h2>
+          <p class="section-lead">
+            从只读监听、系统能力桥接、Swift Actor 并发落盘到原生时间线与 Python 分析技能，全链路保持克制与透明。
+          </p>
+        </div>
+
+        <div class="arch-frame">
+          <div class="arch-svg-scroll">
+            <svg class="arch-svg" viewBox="0 0 980 416" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="InputTimeline 系统架构图：从输入来源经过 macOS 能力层与应用核心，写入本地按日 JSON 并供 SwiftUI 界面与 Python 技能分析">
+              <defs>
+                <marker id="arrow-dark" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#1D1D1F" />
+                </marker>
+                <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#0062CC" />
+                </marker>
+                <marker id="arrow-muted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#595960" />
+                </marker>
+              </defs>
+
+              <!-- 4 Column Region Bands -->
+              <rect x="8" y="8" width="176" height="398" rx="12" fill="#F8F9FB" stroke="#E5E8EE" />
+              <text x="24" y="34" fill="#515154" font-size="12" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">01 · 输入来源</text>
+
+              <rect x="204" y="8" width="218" height="398" rx="12" fill="#F8F9FB" stroke="#E5E8EE" />
+              <text x="220" y="34" fill="#515154" font-size="12" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">02 · macOS 能力层</text>
+
+              <rect x="442" y="8" width="238" height="398" rx="12" fill="#F8F9FB" stroke="#E5E8EE" />
+              <text x="458" y="34" fill="#515154" font-size="12" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">03 · Swift 6 应用核心</text>
+
+              <rect x="700" y="8" width="272" height="398" rx="12" fill="#F8F9FB" stroke="#E5E8EE" />
+              <text x="716" y="34" fill="#515154" font-size="12" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">04 · 本地存储与消费</text>
+
+              <!-- Column 1 Nodes: Input Sources -->
+              <rect x="22" y="58" width="148" height="62" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <circle cx="38" cy="81" r="4" fill="#0062CC" />
+              <text x="48" y="85" fill="#1D1D1F" font-size="13" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">键盘敲击</text>
+              <text x="34" y="105" fill="#595960" font-size="11" font-family="JetBrains Mono, monospace">keyDown events</text>
+
+              <rect x="22" y="140" width="148" height="62" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <circle cx="38" cy="163" r="4" fill="#FF9500" />
+              <text x="48" y="167" fill="#1D1D1F" font-size="13" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">⌘C 复制</text>
+              <text x="34" y="187" fill="#595960" font-size="11" font-family="JetBrains Mono, monospace">Cmd + C shortcut</text>
+
+              <rect x="22" y="222" width="148" height="62" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <circle cx="38" cy="245" r="4" fill="#34C759" />
+              <text x="48" y="249" fill="#1D1D1F" font-size="13" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">⌘V 粘贴</text>
+              <text x="34" y="269" fill="#595960" font-size="11" font-family="JetBrains Mono, monospace">Cmd + V shortcut</text>
+
+              <rect x="22" y="310" width="148" height="72" rx="9" fill="#FFFFFF" stroke="#DCE1EA" stroke-dasharray="4 3" />
+              <text x="34" y="334" fill="#1D1D1F" font-size="12" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">安全输入域隔离</text>
+              <text x="34" y="354" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">密码框等 Secure Input</text>
+              <text x="34" y="370" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">系统默认不分发给监听</text>
+
+              <!-- Column 2 Nodes: macOS Capabilities -->
+              <rect x="218" y="58" width="190" height="74" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="232" y="82" fill="#0062CC" font-size="12.5" font-weight="600" font-family="JetBrains Mono, monospace">CGEvent listen-only</text>
+              <text x="232" y="102" fill="#515154" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">ApplicationServices 只读 Tap</text>
+              <text x="232" y="119" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">不拦截或篡改任何按键</text>
+
+              <rect x="218" y="150" width="190" height="68" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="232" y="174" fill="#1D1D1F" font-size="12.5" font-weight="600" font-family="JetBrains Mono, monospace">NSPasteboard</text>
+              <text x="232" y="194" fill="#515154" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">读取剪贴板纯文本快照</text>
+              <text x="232" y="210" fill="#595960" font-size="10.5" font-family="JetBrains Mono, monospace">150ms copy settle delay</text>
+
+              <rect x="218" y="236" width="190" height="68" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="232" y="260" fill="#1D1D1F" font-size="12.5" font-weight="600" font-family="JetBrains Mono, monospace">NSWorkspace</text>
+              <text x="232" y="280" fill="#515154" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">识别前台应用名与图标</text>
+              <text x="232" y="296" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">切窗即自动拆分键盘段落</text>
+
+              <rect x="218" y="322" width="190" height="60" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="232" y="346" fill="#1D1D1F" font-size="12" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">Input Monitoring 权限</text>
+              <text x="232" y="366" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">仅需「输入监控」单一项授权</text>
+
+              <!-- Column 3 Nodes: Swift Core -->
+              <rect x="456" y="58" width="210" height="62" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="470" y="83" fill="#1D1D1F" font-size="13" font-weight="600" font-family="JetBrains Mono, monospace">KeyboardMonitor</text>
+              <text x="470" y="103" fill="#595960" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">按键回调与 ⌘C / ⌘V 识别</text>
+
+              <rect x="456" y="146" width="210" height="84" rx="9" fill="#FFFFFF" stroke="#0062CC" stroke-width="1.3" />
+              <text x="470" y="172" fill="#0062CC" font-size="13.5" font-weight="600" font-family="JetBrains Mono, monospace">AppModel</text>
+              <text x="548" y="172" fill="#595960" font-size="11" font-family="JetBrains Mono, monospace">@MainActor</text>
+              <text x="470" y="194" fill="#515154" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">状态编排、搜索过滤与分页</text>
+              <text x="470" y="213" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">权限检测 · 导出 NSSavePanel</text>
+
+              <rect x="456" y="246" width="210" height="72" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="470" y="269" fill="#1D1D1F" font-size="12.5" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">偏好与系统集成</text>
+              <text x="470" y="288" fill="#595960" font-size="10.5" font-family="JetBrains Mono, monospace">RecordingPreference</text>
+              <text x="470" y="305" fill="#595960" font-size="10.5" font-family="JetBrains Mono, monospace">LaunchAtLoginManager</text>
+
+              <rect x="456" y="330" width="210" height="52" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="470" y="353" fill="#1D1D1F" font-size="12" font-weight="600" font-family="JetBrains Mono, monospace">PermissionHelper</text>
+              <text x="470" y="370" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">引导前往隐私与安全性授权</text>
+
+              <!-- Column 4 Nodes: Storage, UI & AI -->
+              <rect x="714" y="58" width="244" height="72" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="728" y="82" fill="#B45309" font-size="13" font-weight="600" font-family="JetBrains Mono, monospace">TimelineStore (Actor)</text>
+              <text x="728" y="102" fill="#515154" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">按 1–10s 静默间隔合并写入</text>
+              <text x="728" y="119" fill="#595960" font-size="10.5" font-family="JetBrains Mono, monospace">~/Library/.../&lt;YYYY-MM-DD&gt;.json</text>
+
+              <rect x="714" y="152" width="244" height="78" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="728" y="177" fill="#1D1D1F" font-size="13" font-weight="600" font-family="Figtree, -apple-system, PingFang SC, sans-serif">SwiftUI 原生界面</text>
+              <text x="728" y="197" fill="#515154" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">ContentView · MenuBarExtra · Settings</text>
+              <text x="728" y="214" fill="#595960" font-size="11" font-family="Figtree, -apple-system, PingFang SC, sans-serif">时间线浏览 · 控制符还原 · JSON 导出</text>
+
+              <rect x="714" y="254" width="244" height="128" rx="9" fill="#FFFFFF" stroke="#DCE1EA" />
+              <text x="728" y="280" fill="#15803D" font-size="12.5" font-weight="600" font-family="JetBrains Mono, monospace">analyze-input-timeline</text>
+              <text x="728" y="300" fill="#515154" font-size="11.5" font-family="Figtree, -apple-system, PingFang SC, sans-serif">内置 AI Agent 复盘技能</text>
+              <rect x="728" y="313" width="216" height="24" rx="5" fill="#F2F4F8" />
+              <text x="736" y="329" fill="#1D1D1F" font-size="10.5" font-family="JetBrains Mono, monospace">parse_timeline.py (控制符清洗)</text>
+              <rect x="728" y="343" width="216" height="24" rx="5" fill="#F2F4F8" />
+              <text x="736" y="359" fill="#1D1D1F" font-size="10.5" font-family="JetBrains Mono, monospace">chunk_timeline.py (大数据分块)</text>
+
+              <!-- Connectors -->
+              <!-- Input -> macOS -->
+              <path d="M 170 89 L 216 89" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+              <path d="M 170 171 L 216 171" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+              <path d="M 170 253 C 194 253, 194 196, 216 196" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+
+              <!-- macOS -> Core -->
+              <path d="M 408 89 L 454 89" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+              <path d="M 408 184 L 454 184" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+              <path d="M 408 268 C 432 268, 432 204, 454 204" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+              <path d="M 408 354 L 454 354" stroke="#595960" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrow-muted)" />
+
+              <!-- Core internal -->
+              <path d="M 561 120 L 561 144" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+              <path d="M 561 246 L 561 232" stroke="#595960" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrow-muted)" />
+
+              <!-- Core -> Storage & UI -->
+              <path d="M 666 164 C 690 164, 690 94, 712 94" stroke="#1D1D1F" stroke-width="1.5" marker-end="url(#arrow-dark)" />
+              <path d="M 666 192 L 712 192" stroke="#0062CC" stroke-width="1.5" marker-end="url(#arrow-blue)" />
+              <path d="M 836 130 L 836 150" stroke="#0062CC" stroke-width="1.5" marker-end="url(#arrow-blue)" />
+
+              <!-- Storage -> AI Skill -->
+              <path d="M 958 94 L 966 94 L 966 318 L 960 318" stroke="#595960" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrow-muted)" />
+            </svg>
+          </div>
+
+          <div class="arch-legend">
+            <div class="arch-legend-items">
+              <span class="arch-legend-item"><span class="arch-line-sample solid" aria-hidden="true"></span>事件采集与持久化流</span>
+              <span class="arch-legend-item"><span class="arch-line-sample blue" aria-hidden="true"></span>分页时间线数据读取</span>
+              <span class="arch-legend-item">
+                <svg width="20" height="4" viewBox="0 0 20 4" aria-hidden="true">
+                  <line x1="0" y1="2" x2="20" y2="2" stroke="#595960" stroke-width="1.6" stroke-dasharray="4 3" />
+                </svg>
+                权限校验 / 离线文件分析
+              </span>
+            </div>
+            <span>全链路运行于 macOS 本地，零外部网络请求</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Local Build & AI Skill -->
+    <section class="section" id="quickstart">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">本地构建与 AI 每日复盘</h2>
+          <p class="section-lead">
+            无需复杂配置，拉取仓库后一条命令即可编译打包 <code>InputTimeline.app</code>，并可直接调用内置 Python 解析脚本。
+          </p>
+        </div>
+
+        <div class="build-grid">
+          <div class="build-card">
+            <h3>1. 本地编译打包 .app</h3>
+            <p>
+              基于 Swift Package Manager 构建，运行脚本后将在 <code>InputTimeline/dist/InputTimeline.app</code> 生成已签名的原生应用。
+            </p>
+            <div class="terminal-box">
+              <div class="terminal-head">
+                <span>Terminal · zsh</span>
+                <button class="copy-code-btn" type="button" data-copy-target="build-cmd-code">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>复制命令</span>
+                </button>
+              </div>
+              <pre class="terminal-pre" id="build-cmd-code">git clone https://github.com/lxx-003/input-time-line.git
+cd input-time-line/InputTimeline
+./scripts/build-app.sh</pre>
+            </div>
+            <p style="font-size:13px;color:var(--ink-tertiary);">
+              也可运行 <code>./scripts/open-app.sh</code> 构建并立即打开，或执行 <code>swift build -c release</code> 仅编译可执行文件。
+            </p>
+          </div>
+
+          <div class="build-card">
+            <h3>2. AI 复盘技能 (analyze-input-timeline)</h3>
+            <p>
+              仓库内置 <code>.cursor/skills/analyze-input-timeline/</code>，包含 <code>parse_timeline.py</code> 与 <code>chunk_timeline.py</code>，对长文本做清洗与分块以便 AI 总结当天工作。
+            </p>
+            <div class="terminal-box">
+              <div class="terminal-head">
+                <span>Python 3 · CLI 解析示例</span>
+                <button class="copy-code-btn" type="button" data-copy-target="skill-cmd-code">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>复制命令</span>
+                </button>
+              </div>
+              <pre class="terminal-pre" id="skill-cmd-code">python3 .cursor/skills/analyze-input-timeline/scripts/parse_timeline.py 2026-11-13
+python3 .cursor/skills/analyze-input-timeline/scripts/parse_timeline.py 2026-11-13 --max-chars 300 --keep 100</pre>
+            </div>
+            <p style="font-size:13px;color:var(--ink-tertiary);">
+              如需迁移至其他 AI 工具（如 Claude Code），将 <code>analyze-input-timeline/</code> 目录复制到对应 <code>~/.claude/skills/</code> 即可。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section section-alt" id="faq">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">常见问题</h2>
+          <p class="section-lead">关于系统权限、本地隐私与日常使用方式的清晰说明。</p>
+        </div>
+
+        <div class="faq-list">
+          <div class="faq-item is-open">
+            <button class="faq-trigger" type="button" aria-expanded="true">
+              <span>为什么需要「输入监控」权限？会修改我的按键或记录密码吗？</span>
+              <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              InputTimeline 使用 macOS <code>ApplicationServices</code> 提供的 <code>CGEvent</code> listen-only tap（只读监听），只接收按键事件而不拦截或篡改输入。读取前台应用名称使用 <code>NSWorkspace</code>，无需额外权限；系统密码框等安全输入域在启用 Secure Input 时通常不会被系统分发给监听端。
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-trigger" type="button" aria-expanded="false">
+              <span>记录的数据存在哪里？会有任何网络请求吗？</span>
+              <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              不会有任何网络请求，无遥测、无云端同步。每日记录纯本地写入 <code>~/Library/Application Support/InputTimeline/&lt;YYYY-MM-DD&gt;.json</code>，你可以在偏好设置中一键打开该目录，或随时使用主窗口的「导出 JSON」按钮备份。
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-trigger" type="button" aria-expanded="false">
+              <span>如果刚重新编译了应用，系统提示监听未建立怎么办？</span>
+              <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              本地重新编译会导致应用签名变化，macOS 可能保留旧的授权条目。只需前往「系统设置 → 隐私与安全性 → 输入监控」将旧的 InputTimeline 移除后重新添加并勾选，随后切回应用或点击主窗口的「重检」按钮即可恢复记录。
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-trigger" type="button" aria-expanded="false">
+              <span>如何暂时关闭记录，或调节键盘自动分段的间隔？</span>
+              <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="faq-answer">
+              你可以在主窗口侧栏左下角开关、菜单栏图标下拉菜单的「暂停记录」，或者偏好设置中随时暂停与恢复采集。偏好设置内的「键盘静默分段间隔」支持在 <code>1–10 秒</code> 之间调节（默认 2 秒），同时切换前台应用也会立即拆分成新段落。
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <strong style="color:var(--ink-primary);font-weight:600;">InputTimeline</strong> · MIT License © xinhuang.liu
+      </div>
+      <div class="footer-links">
+        <span>macOS 13+ · Swift 6 · 100% 本地离线</span>
+        <a href="https://github.com/lxx-003/input-time-line" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast-banner" id="toast-banner" role="status" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      const APP_BADGE_MAP = {
+        Cursor: { bg: "#1D1D1F", label: "C" },
+        Safari: { bg: "#0062CC", label: "S" },
+        终端: { bg: "#2C2C2E", label: ">_" },
+        Notes: { bg: "#A16207", label: "N" },
+        Xcode: { bg: "#0062CC", label: "X" }
+      };
+
+      const TIMELINE_DATA = {
+        "2026-11-13": {
+          dateTitle: "2026 年 11 月 13 日",
+          dateTag: "今天 · 星期五",
+          totalCount: 24,
+          counts: { keyboard: 14, copy: 6, paste: 4 },
+          items: [
+            {
+              id: "13-1",
+              kind: "键盘",
+              clock: "14:22:08 – 14:22:34",
+              duration: "26s",
+              fullTime: "2026-11-13 14:22:08 → 2026-11-13 14:22:34",
+              appName: "Cursor",
+              text: "func buildDailyTimelinePage(date: String) {\r\tguard let file = store.fileURL(for: date) else { return }\r}"
+            },
+            {
+              id: "13-2",
+              kind: "复制",
+              clock: "14:18:41",
+              duration: null,
+              fullTime: "2026-11-13 14:18:41",
+              appName: "Safari",
+              text: "CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, ...)"
+            },
+            {
+              id: "13-3",
+              kind: "粘贴",
+              clock: "14:18:45",
+              duration: null,
+              fullTime: "2026-11-13 14:18:45",
+              appName: "Cursor",
+              text: "CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, ...)"
+            },
+            {
+              id: "13-4",
+              kind: "键盘",
+              clock: "13:55:10 – 13:55:19",
+              duration: "9s",
+              fullTime: "2026-11-13 13:55:10 → 2026-11-13 13:55:19",
+              appName: "终端",
+              text: "cd InputTimeline && ./scripts/build-app.sh\r"
+            },
+            {
+              id: "13-5",
+              kind: "键盘",
+              clock: "11:14:02 – 11:14:48",
+              duration: "46s",
+              fullTime: "2026-11-13 11:14:02 → 2026-11-13 11:14:48",
+              appName: "Notes",
+              text: "今日复盘要点：1. 完善键盘静默分段 1-10s 设置项 2. 补充控制符可视化映射 3. 使用 parse_timeline.py 导出今日概览并核对菜单栏计数逻辑，确保导出 JSON 字段与 README 文档保持完全一致。"
+            }
+          ]
+        },
+        "2026-11-12": {
+          dateTitle: "2026 年 11 月 12 日",
+          dateTag: "昨天 · 星期四",
+          totalCount: 19,
+          counts: { keyboard: 11, copy: 5, paste: 3 },
+          items: [
+            {
+              id: "12-1",
+              kind: "键盘",
+              clock: "18:04:12 – 18:04:29",
+              duration: "17s",
+              fullTime: "2026-11-12 18:04:12 → 2026-11-12 18:04:29",
+              appName: "终端",
+              text: "python3 .cursor/skills/analyze-input-timeline/scripts/parse_timeline.py 2026-11-12\r"
+            },
+            {
+              id: "12-2",
+              kind: "复制",
+              clock: "16:31:05",
+              duration: null,
+              fullTime: "2026-11-12 16:31:05",
+              appName: "Xcode",
+              text: "~/Library/Application Support/InputTimeline"
+            },
+            {
+              id: "12-3",
+              kind: "粘贴",
+              clock: "16:31:11",
+              duration: null,
+              fullTime: "2026-11-12 16:31:11",
+              appName: "Notes",
+              text: "~/Library/Application Support/InputTimeline"
+            }
+          ]
+        },
+        "2026-11-11": {
+          dateTitle: "2026 年 11 月 11 日",
+          dateTag: "星期三",
+          totalCount: 15,
+          counts: { keyboard: 9, copy: 4, paste: 2 },
+          items: [
+            {
+              id: "11-1",
+              kind: "键盘",
+              clock: "10:12:40 – 10:13:02",
+              duration: "22s",
+              fullTime: "2026-11-11 10:12:40 → 2026-11-11 10:13:02",
+              appName: "Xcode",
+              text: "struct SettingsView: View {\r\t@EnvironmentObject private var model: AppModel\r}"
+            },
+            {
+              id: "11-2",
+              kind: "复制",
+              clock: "09:45:18",
+              duration: null,
+              fullTime: "2026-11-11 09:45:18",
+              appName: "Safari",
+              text: "NSWorkspace.shared.frontmostApplication?.localizedName"
+            }
+          ]
+        }
+      };
+
+      const state = {
+        activeView: "main",
+        selectedDay: "2026-11-13",
+        kindFilter: "全部",
+        searchQuery: "",
+        isRecording: true,
+        launchAtLogin: true,
+        silenceGapSeconds: 2,
+        inspectedItem: null
+      };
+
+      // Toast helper
+      const toastEl = document.getElementById("toast-banner");
+      let toastTimer = null;
+      function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add("is-visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+          toastEl.classList.remove("is-visible");
+        }, 2200);
+      }
+
+      // View switcher (Segmented Tabs)
+      const tabButtons = document.querySelectorAll(".mac-segmented-btn");
+      const viewPanels = {
+        main: document.getElementById("panel-main"),
+        menubar: document.getElementById("panel-menubar"),
+        settings: document.getElementById("panel-settings")
+      };
+
+      function switchShowcaseView(viewName) {
+        state.activeView = viewName;
+        tabButtons.forEach(function (btn) {
+          const active = btn.dataset.view === viewName;
+          btn.classList.toggle("is-active", active);
+          btn.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        Object.keys(viewPanels).forEach(function (key) {
+          viewPanels[key].classList.toggle("is-active", key === viewName);
+        });
+      }
+
+      tabButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          switchShowcaseView(btn.dataset.view);
+        });
+      });
+
+      document.querySelectorAll("[data-jump-view]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          switchShowcaseView(btn.dataset.jumpView);
+        });
+      });
+
+      // Sync recording status across all 3 views
+      const footerDot = document.getElementById("demo-footer-dot");
+      const footerStatus = document.getElementById("demo-footer-status");
+      const footerSwitch = document.getElementById("demo-recording-switch");
+      const menubarDot = document.getElementById("menubar-status-dot");
+      const menubarText = document.getElementById("menubar-status-text");
+      const menubarToggleLabel = document.getElementById("menubar-toggle-label");
+      const settingsRecordSwitch = document.getElementById("settings-record-switch");
+
+      function syncRecordingState() {
+        const rec = state.isRecording;
+        footerDot.classList.toggle("is-paused", !rec);
+        footerStatus.textContent = rec ? "正在记录" : "已暂停";
+        footerSwitch.classList.toggle("is-on", rec);
+        footerSwitch.setAttribute("aria-checked", rec ? "true" : "false");
+
+        menubarDot.classList.toggle("is-paused", !rec);
+        menubarText.textContent = (rec ? "状态：正在记录" : "状态：已暂停") + " · 2026-11-13 (24 条)";
+        menubarToggleLabel.textContent = rec ? "暂停记录" : "开启记录";
+
+        settingsRecordSwitch.classList.toggle("is-on", rec);
+        settingsRecordSwitch.setAttribute("aria-checked", rec ? "true" : "false");
+      }
+
+      function toggleRecording() {
+        state.isRecording = !state.isRecording;
+        syncRecordingState();
+        showToast(state.isRecording ? "已开启键盘与剪贴板记录" : "已暂停记录");
+      }
+
+      footerSwitch.addEventListener("click", toggleRecording);
+      settingsRecordSwitch.addEventListener("click", toggleRecording);
+      document.getElementById("menubar-toggle-record").addEventListener("click", toggleRecording);
+
+      document.getElementById("menubar-quit-btn").addEventListener("click", function () {
+        showToast("预览模式：在实际应用中将退出 InputTimeline");
+      });
+
+      // Settings Launch at Login & Stepper (1-10s)
+      const loginSwitch = document.getElementById("settings-login-switch");
+      loginSwitch.addEventListener("click", function () {
+        state.launchAtLogin = !state.launchAtLogin;
+        loginSwitch.classList.toggle("is-on", state.launchAtLogin);
+        loginSwitch.setAttribute("aria-checked", state.launchAtLogin ? "true" : "false");
+        showToast(state.launchAtLogin ? "已开启登录项自启" : "已关闭开机自动启动");
+      });
+
+      const stepperLabel = document.getElementById("stepper-seconds-label");
+      const stepperMinus = document.getElementById("stepper-minus");
+      const stepperPlus = document.getElementById("stepper-plus");
+
+      function updateStepperUI() {
+        stepperLabel.textContent = state.silenceGapSeconds + " 秒";
+        stepperMinus.disabled = state.silenceGapSeconds <= 1;
+        stepperPlus.disabled = state.silenceGapSeconds >= 10;
+      }
+
+      stepperMinus.addEventListener("click", function () {
+        if (state.silenceGapSeconds > 1) {
+          state.silenceGapSeconds -= 1;
+          updateStepperUI();
+        }
+      });
+
+      stepperPlus.addEventListener("click", function () {
+        if (state.silenceGapSeconds < 10) {
+          state.silenceGapSeconds += 1;
+          updateStepperUI();
+        }
+      });
+      updateStepperUI();
+
+      document.querySelectorAll("[data-toast]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          showToast(btn.dataset.toast);
+        });
+      });
+
+      // Text formatting helpers matching TimelineFormatters.swift
+      function escapeHTML(str) {
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function formatVisualHTML(raw) {
+        let s = raw.replace(/\r\n/g, "\n").replace(/\n+$/, "");
+        let out = "";
+        for (let i = 0; i < s.length; i++) {
+          const ch = s[i];
+          if (ch === "\r") {
+            out += '<span class="ctrl-sym">↩</span>';
+            if (i < s.length - 1) out += "<br/>";
+          } else if (ch === "\n") {
+            out += '<span class="ctrl-sym">↵</span><br/>';
+          } else if (ch === "\t") {
+            out += '<span class="ctrl-sym">→</span> ';
+          } else if (ch === "\b") {
+            out += '<span class="ctrl-sym">⌫</span>';
+          } else if (ch === "\x1b") {
+            out += '<span class="ctrl-sym">⎋</span>';
+          } else {
+            out += escapeHTML(ch);
+          }
+        }
+        return out;
+      }
+
+      function formatDisplayTextPlain(raw) {
+        return raw
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "↩\n")
+          .replace(/\t/g, "→ ")
+          .replace(/\b/g, "⌫")
+          .replace(/\x1b/g, "⎋")
+          .replace(/\n+$/, "");
+      }
+
+      function kindClass(kind) {
+        if (kind === "键盘") return "keyboard";
+        if (kind === "复制") return "copy";
+        return "paste";
+      }
+
+      // Render Timeline List
+      const detailTitle = document.getElementById("demo-detail-title");
+      const detailTag = document.getElementById("demo-detail-tag");
+      const detailCounts = document.getElementById("demo-detail-counts");
+      const timelineList = document.getElementById("demo-timeline-list");
+
+      function renderTimeline() {
+        const dayData = TIMELINE_DATA[state.selectedDay];
+        detailTitle.textContent = dayData.dateTitle;
+        detailTag.textContent = dayData.dateTag;
+        detailCounts.textContent =
+          "共 " + dayData.totalCount + " 条 · 键盘 " + dayData.counts.keyboard +
+          " · 复制 " + dayData.counts.copy + " · 粘贴 " + dayData.counts.paste;
+
+        const query = state.searchQuery.trim().toLowerCase();
+        const filtered = dayData.items.filter(function (item) {
+          const matchKind = state.kindFilter === "全部" || item.kind === state.kindFilter;
+          const matchQuery =
+            !query ||
+            item.text.toLowerCase().includes(query) ||
+            (item.appName && item.appName.toLowerCase().includes(query));
+          return matchKind && matchQuery;
+        });
+
+        if (filtered.length === 0) {
+          timelineList.innerHTML =
+            '<div class="empty-filter-state">没有匹配的记录，尝试更换关键词或切换事件类型。</div>';
+          return;
+        }
+
+        timelineList.innerHTML = filtered
+          .map(function (item) {
+            const kClass = kindClass(item.kind);
+            const appMeta = APP_BADGE_MAP[item.appName] || { bg: "#64748B", label: item.appName ? item.appName[0] : "A" };
+            const isLong = item.text.length > 90 || item.text.includes("\r") || item.text.includes("\n");
+            const displayText = item.text.length > 105 ? item.text.slice(0, 105) + "…" : item.text;
+
+            return (
+              '<div class="timeline-row" data-item-id="' + item.id + '">' +
+                '<div class="row-time-gutter">' +
+                  '<span class="row-clock">' + escapeHTML(item.clock) + "</span>" +
+                  (item.duration ? '<span class="row-duration">' + escapeHTML(item.duration) + "</span>" : "") +
+                "</div>" +
+                '<span class="row-dot ' + kClass + '" aria-hidden="true"></span>' +
+                '<div class="row-content">' +
+                  '<div class="row-meta">' +
+                    '<div class="row-meta-left">' +
+                      '<span class="row-kind ' + kClass + '">' + item.kind + "</span>" +
+                      (item.appName
+                        ? '<span class="row-meta-sep">·</span>' +
+                          '<span class="row-app-badge">' +
+                            '<span class="app-mini-icon" style="background:' + appMeta.bg + ';">' + escapeHTML(appMeta.label) + "</span>" +
+                            "<span>" + escapeHTML(item.appName) + "</span>" +
+                          "</span>"
+                        : "") +
+                    "</div>" +
+                    '<div class="row-actions">' +
+                      (isLong
+                        ? '<button class="row-action-btn js-inspect-btn" type="button" title="查看全文">' +
+                            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>' +
+                            "<span>全文</span>" +
+                          "</button>"
+                        : "") +
+                      '<button class="row-action-btn js-copy-row-btn" type="button" title="复制原文">' +
+                        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+                        "<span>复制</span>" +
+                      "</button>" +
+                    "</div>" +
+                  "</div>" +
+                  '<div class="row-text">' + formatVisualHTML(displayText) + "</div>" +
+                  (item.text.length > 105
+                    ? '<button class="inspect-link js-inspect-btn" type="button">展开全文（共 ' + item.text.length + " 字）</button>"
+                    : "") +
+                "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+      }
+
+      // Sidebar day selection
+      document.querySelectorAll(".sidebar-day-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          state.selectedDay = btn.dataset.day;
+          document.querySelectorAll(".sidebar-day-btn").forEach(function (b) {
+            b.classList.toggle("is-active", b === btn);
+          });
+          renderTimeline();
+        });
+      });
+
+      // Kind filter segmented control
+      document.querySelectorAll(".toolbar-seg-item").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          state.kindFilter = btn.dataset.kind;
+          document.querySelectorAll(".toolbar-seg-item").forEach(function (b) {
+            b.classList.toggle("is-active", b === btn);
+          });
+          renderTimeline();
+        });
+      });
+
+      // Live search
+      document.getElementById("demo-search-input").addEventListener("input", function (e) {
+        state.searchQuery = e.target.value;
+        renderTimeline();
+      });
+
+      // Export JSON demo button
+      document.getElementById("demo-export-btn").addEventListener("click", function () {
+        showToast("已触发 NSSavePanel：导出 " + state.selectedDay + ".json");
+      });
+
+      // Inspect sheet modal
+      const sheetBackdrop = document.getElementById("demo-sheet-backdrop");
+      const sheetKind = document.getElementById("demo-sheet-kind");
+      const sheetApp = document.getElementById("demo-sheet-app");
+      const sheetTime = document.getElementById("demo-sheet-time");
+      const sheetChars = document.getElementById("demo-sheet-chars");
+      const sheetText = document.getElementById("demo-sheet-text");
+      const sheetToggle = document.getElementById("demo-sheet-visual-toggle");
+      const sheetCopyBtn = document.getElementById("demo-sheet-copy");
+
+      function updateSheetText() {
+        if (!state.inspectedItem) return;
+        sheetText.textContent = sheetToggle.checked
+          ? formatDisplayTextPlain(state.inspectedItem.text)
+          : state.inspectedItem.text;
+      }
+
+      function openInspectSheet(item) {
+        state.inspectedItem = item;
+        sheetKind.textContent = item.kind;
+        sheetApp.textContent = item.appName || "";
+        sheetTime.textContent = item.fullTime;
+        sheetChars.textContent = "共 " + item.text.length + " 个字符";
+        updateSheetText();
+        sheetBackdrop.classList.add("is-open");
+        sheetBackdrop.setAttribute("aria-hidden", "false");
+      }
+
+      function closeInspectSheet() {
+        sheetBackdrop.classList.remove("is-open");
+        sheetBackdrop.setAttribute("aria-hidden", "true");
+        state.inspectedItem = null;
+      }
+
+      sheetToggle.addEventListener("change", updateSheetText);
+      document.getElementById("demo-sheet-close").addEventListener("click", closeInspectSheet);
+      sheetBackdrop.addEventListener("click", function (e) {
+        if (e.target === sheetBackdrop) closeInspectSheet();
+      });
+
+      sheetCopyBtn.addEventListener("click", function () {
+        if (!state.inspectedItem) return;
+        copyTextToClipboard(state.inspectedItem.text, function () {
+          sheetCopyBtn.textContent = "已复制原文";
+          setTimeout(function () {
+            sheetCopyBtn.textContent = "复制完整原文";
+          }, 1200);
+        });
+      });
+
+      timelineList.addEventListener("click", function (e) {
+        const row = e.target.closest(".timeline-row");
+        if (!row) return;
+        const itemId = row.dataset.itemId;
+        const item = TIMELINE_DATA[state.selectedDay].items.find(function (x) {
+          return x.id === itemId;
+        });
+        if (!item) return;
+
+        if (e.target.closest(".js-inspect-btn")) {
+          openInspectSheet(item);
+          return;
+        }
+
+        const copyBtn = e.target.closest(".js-copy-row-btn");
+        if (copyBtn) {
+          const actionsWrap = copyBtn.closest(".row-actions");
+          copyTextToClipboard(item.text, function () {
+            copyBtn.classList.add("copied");
+            copyBtn.querySelector("span").textContent = "已复制";
+            if (actionsWrap) actionsWrap.classList.add("has-feedback");
+            setTimeout(function () {
+              copyBtn.classList.remove("copied");
+              copyBtn.querySelector("span").textContent = "复制";
+              if (actionsWrap) actionsWrap.classList.remove("has-feedback");
+            }, 1200);
+          });
+        }
+      });
+
+      // Clipboard helper
+      function copyTextToClipboard(text, onDone) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(onDone).catch(function () {
+            fallbackCopy(text);
+            onDone();
+          });
+        } else {
+          fallbackCopy(text);
+          onDone();
+        }
+      }
+
+      function fallbackCopy(text) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (_) {}
+        document.body.removeChild(ta);
+      }
+
+      // Copy code buttons (JSON & Terminal)
+      document.querySelectorAll("[data-copy-target]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const target = document.getElementById(btn.dataset.copyTarget);
+          if (!target) return;
+          const labelSpan = btn.querySelector("span");
+          const originalText = labelSpan.textContent;
+          copyTextToClipboard(target.textContent, function () {
+            btn.classList.add("is-copied");
+            labelSpan.textContent = "已复制";
+            showToast("已复制到剪贴板");
+            setTimeout(function () {
+              btn.classList.remove("is-copied");
+              labelSpan.textContent = originalText;
+            }, 1400);
+          });
+        });
+      });
+
+      // FAQ Accordion
+      document.querySelectorAll(".faq-trigger").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const item = btn.closest(".faq-item");
+          const willOpen = !item.classList.contains("is-open");
+          item.classList.toggle("is-open", willOpen);
+          btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+        });
+      });
+
+      // Initial render
+      renderTimeline();
+      syncRecordingState();
+    })();
+  </script>
+</body>
+</html>
