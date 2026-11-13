@@ -20,6 +20,12 @@ struct ContentView: View {
         }
         .background(PlushTheme.bg.ignoresSafeArea(.container, edges: .top))
         .background(WindowStyleConfigurator())
+        .overlay(alignment: .top) {
+            WindowTitlebarDragStrip()
+                .frame(height: 32)
+                .padding(.leading, 76)
+                .ignoresSafeArea(.container, edges: .top)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.handleAppDidBecomeActive()
         }
@@ -76,7 +82,7 @@ struct ContentView: View {
                 .help(model.isCalendarExpanded ? "收起月历" : "展开月历")
             }
             .padding(.horizontal, 14)
-            .padding(.top, 10)
+            .padding(.top, 36)
 
             // Collapsible Plush Calendar
             if model.isCalendarExpanded {
@@ -114,7 +120,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
             } else {
-                ScrollView {
+                PlushScrollView {
                     LazyVStack(alignment: .leading, spacing: 3) {
                         ForEach(model.groupedDaySections) { section in
                             Section {
@@ -139,7 +145,6 @@ struct ContentView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                 }
-                .thinOverlayScrollbar()
             }
 
             // Floating Status Control Card
@@ -147,6 +152,7 @@ struct ContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
         }
+        .ignoresSafeArea(.container, edges: .top)
         .background(PlushTheme.panel.ignoresSafeArea(.container, edges: .top))
     }
 
@@ -260,10 +266,10 @@ struct ContentView: View {
     private var detail: some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
-                // Top Plush Control Bar (sits cleanly below transparent macOS titlebar safe area)
+                // Top Plush Control Bar (aligned horizontally with sidebar header below drag strip)
                 topControlBar
                     .padding(.horizontal, 22)
-                    .padding(.top, 10)
+                    .padding(.top, 36)
                     .padding(.bottom, 12)
 
                 if (!model.permissionGranted || model.tapCreationFailed) && model.selectedTimeline != nil {
@@ -280,7 +286,7 @@ struct ContentView: View {
                     if timeline.items.isEmpty {
                         filteredEmptyState(dayTotalCount: timeline.dayTotalCount)
                     } else {
-                        ScrollView {
+                        PlushScrollView {
                             LazyVStack(spacing: 8) {
                                 ForEach(timeline.items) { entry in
                                     TimelineCardView(
@@ -305,7 +311,6 @@ struct ContentView: View {
                             .padding(.top, 4)
                             .padding(.bottom, 26)
                         }
-                        .thinOverlayScrollbar()
                     }
                 } else if !model.permissionGranted {
                     permissionOnboardingState
@@ -327,6 +332,7 @@ struct ContentView: View {
                 .zIndex(50)
             }
         }
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     private var topControlBar: some View {
@@ -792,7 +798,7 @@ private struct SidebarDayRow: View {
     }
 }
 
-// MARK: - Window Style Configurator (transparent integrated titlebar, no sidebar toggle)
+// MARK: - Window Style Configurator (seamless hidden titlebar, no separator)
 
 private struct WindowStyleConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
@@ -820,6 +826,25 @@ private struct WindowStyleConfigurator: NSViewRepresentable {
         }
         if window.titleVisibility != .hidden {
             window.titleVisibility = .hidden
+        }
+        if window.titlebarSeparatorStyle != .none {
+            window.titlebarSeparatorStyle = .none
+        }
+    }
+}
+
+private struct WindowTitlebarDragStrip: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        DragStripNSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class DragStripNSView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
         }
     }
 }

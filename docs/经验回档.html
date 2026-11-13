@@ -475,19 +475,15 @@
         detailed: true,
         tags: ["macOS", "SwiftUI", "Titlebar", "SafeArea", "NavigationSplitView", "Layout"],
         sections: [
-          { label: "现象与连续两轮问题", type: "list", items: [
-            "<strong>第一轮问题（多余系统按钮）：</strong>使用 <code>NavigationSplitView</code> 时，macOS 系统会自动在左上角交通灯右侧注入一个 Sidebar 折叠图标按钮；对于固定双栏工具来说既多余又破坏顶部视觉统一。",
-            "<strong>第二轮问题（顶部控件被挡住）：</strong>将 <code>NavigationSplitView</code> 替换为自定义 <code>HStack(spacing: 0)</code> + <code>.fullSizeContentView</code> + <code>titlebarAppearsTransparent = true</code> 后，为了把背景铺满顶边而在外层容器加了 <code>.ignoresSafeArea(.container, edges: .top)</code>，右侧控制条仅设了 <code>padding(.top, 18)</code>。结果分段器与警告条直接顶进了约 <code>28pt</code> 的系统透明标题栏热区，被窗口上沿压住且容易被拖拽手势干扰。"
-          ]},
-          { label: "错判与复盘", type: "list", items: [
-            "<strong>错判 1：</strong>以为去掉 <code>NavigationSplitView</code> 改用透明标题栏后，需要手动在所有地方用硬编码 <code>padding(.top, 42)</code> 去躲交通灯。",
-            "<strong>事实真相：</strong>在开启 <code>.fullSizeContentView</code> 时，SwiftUI 默认仍会自动保留顶部约 <code>28pt</code> 的标题栏安全区（<code>safeAreaInsets.top</code>）。真正把控件顶进危险区的，是加在<strong>整棵内容树外层</strong>的 <code>.ignoresSafeArea(.container, edges: .top)</code>。",
-            "<strong>错判 2：</strong>在 <code>WindowStyleConfigurator</code> 中随手开启了 <code>window.isMovableByWindowBackground = true</code>，可能干扰列表卡片内 <code>.textSelection(.enabled)</code> 的文本划选体验。"
+          { label: "现象与连续问题", type: "list", items: [
+            "<strong>第一轮（多余系统按钮）：</strong>使用 <code>NavigationSplitView</code> 时，macOS 系统会自动在左上角交通灯右侧注入一个 Sidebar 折叠图标按钮；对于固定双栏工具来说既多余又破坏顶部视觉统一。",
+            "<strong>第二轮（安全区误入）：</strong>替换为自定义 <code>HStack</code> 后，对外层容器写了 <code>.ignoresSafeArea(.container, edges: .top)</code> 且右侧仅留 <code>18pt</code> 顶边距，导致控件顶进系统透明标题栏热区。",
+            "<strong>第三轮（标题栏雾化带与横线割裂）：</strong>即使设为 <code>titlebarAppearsTransparent = true</code>，只要未声明 <code>.windowStyle(.hiddenTitleBar)</code> 且 <code>titlebarSeparatorStyle</code> 未设为 <code>.none</code>，macOS 仍在顶部绘制一条带灰白模糊背景和底边的 <code>NSTitlebarContainerView</code>，直接横切过下面紧邻的控件上半边。"
           ]},
           { label: "最终解法", type: "list", items: [
-            "移除外层容器的 <code>.ignoresSafeArea(.container, edges: .top)</code>，只将其放在左右两栏的 <code>.background(...)</code> 与中缝分割线上，让背景色无缝铺到窗口顶边，而所有交互内容自然留在系统标题栏安全区下方。",
-            "左侧「时间档案」与右侧 <code>topControlBar</code> 统一使用 <code>padding(.top, 10)</code>，两侧无需硬编码猜测交通灯高度即可天然水平对齐。",
-            "移除 <code>window.isMovableByWindowBackground = true</code>，仅依靠系统顶部原生标题栏安全带拖拽窗口，确保正文文本划选不受影响。"
+            "在 <code>WindowGroup</code> 上直接声明 <code>.windowStyle(.hiddenTitleBar)</code>，并在 <code>WindowStyleConfigurator</code> 中同时设置 <code>titlebarAppearsTransparent = true</code>、<code>titleVisibility = .hidden</code> 与 <code>titlebarSeparatorStyle = .none</code>，彻底消除顶部的雾化带与横向分割线。",
+            "左右两栏内容统一留出 <code>padding(.top, 36)</code>，使左侧「时间档案」与右侧控制条完全水平对齐，上方 <code>0...32pt</code> 为纯净无边框拖拽区。",
+            "通过 <code>WindowTitlebarDragStrip</code>（加 <code>.ignoresSafeArea(.container, edges: .top)</code> 并避开左侧 76pt 交通灯区）提供可靠的窗口拖动能力，同时不启用 <code>isMovableByWindowBackground</code>，避免干扰列表正文划选。"
           ]},
           { label: "可复用原则", type: "list", items: [
             "<strong>只让背景忽略顶部安全区，绝不让交互内容忽略顶部安全区。</strong>这是实现 macOS 沉浸式透明顶栏最稳妥的姿势。",
@@ -526,6 +522,35 @@
             "<strong>不要在视图 <code>body</code> 里做 <code>DateFormatter</code> 批处理。</strong>日期分组与格式化属于模型派生数据，应在数据变动时预计算。"
           ]},
           { label: "代码位置", type: "text", content: "<code>ContentView.swift</code>（<code>SidebarDayRow</code>）、<code>TimelineCardView.swift</code>、<code>PlushTheme.swift</code>、<code>TimelineFormatters.swift</code>、<code>ThinScrollbarModifier.swift</code>、<code>AppModel.swift</code>。" }
+        ]
+      },
+      {
+        id: 7,
+        title: "SwiftUI ScrollView 极细无边框滚动条：外部挂钩误撞兄弟视图，需从内容内部用 enclosingScrollView 锚定",
+        date: "2026-11-14",
+        time: "01:30",
+        detailed: true,
+        tags: ["SwiftUI", "AppKit", "NSScroller", "Scrollbar", "UI"],
+        sections: [
+          { label: "现象", type: "list", items: [
+            "右侧时间线列表右边缘出现一条约 <code>15pt</code> 宽的浅白独立轨道槽和细分割边框，把卡片往左挤压；滑块也比预期更粗，与无边框的 Plush 卡片画风割裂。",
+            "虽然已经给 <code>ScrollView</code> 挂了 <code>.thinOverlayScrollbar()</code>（尝试设置 <code>.overlay</code> 和 <code>controlSize = .mini</code>），但右侧列表始终没生效。"
+          ]},
+          { label: "根因（两层叠加）", type: "list", items: [
+            "<strong>1. 探测锚点挂在 ScrollView 外部，查找错位或落空：</strong>把 <code>NSViewRepresentable</code> 通过 <code>.background(...)</code> 挂在 <code>ScrollView</code> 外层时，它与 <code>NSScrollView</code> 处于同级或外层宿主，<code>enclosingScrollView</code> 为 <code>nil</code>；向上回溯再向下搜子视图时，极易优先命中上方「活跃应用」横向 <code>ScrollView(.horizontal)</code>，或在 <code>makeNSView</code> 首次异步派发时尚未挂入窗口树而直接错过。",
+            "<strong>2. 系统默认 <code>NSScroller</code> 自带轨道槽与边框：</strong>即使设成 <code>.overlay</code> 与 <code>.mini</code>，系统原生 scroller 在特定鼠标准入或展开态下仍会绘制 <code>drawKnobSlot</code> 轨道背景与边框线，且宽度仍偏粗。"
+          ]},
+          { label: "最终解法", type: "list", items: [
+            "<strong>用 <code>PlushScrollView</code> 从内容内部直接锚定：</strong>将 <code>EnclosingScrollViewAnchor</code> 放到 <code>ScrollView</code> 的<strong>内部内容</strong> <code>.background(...)</code> 上，并在 <code>viewDidMoveToWindow()</code> 就绪后调用 <code>view.enclosingScrollView</code>，100% 精准命中当前所属的唯一 <code>NSScrollView</code>，绝不误撞兄弟滚动视图。",
+            "<strong>锁定无框透明悬浮容器：</strong>设置 <code>borderType = .noBorder</code>、<code>drawsBackground = false</code>、<code>scrollerStyle = .overlay</code>、<code>autohidesScrollers = true</code>，并监听 <code>preferredScrollerStyleDidChangeNotification</code> 防止接外接鼠标后回退到 <code>.legacy</code> 粗槽。",
+            "<strong>自定义 <code>ThinOverlayScroller: NSScroller</code>：</strong>重写 <code>isCompatibleWithOverlayScrollers = true</code>、清空 <code>drawKnobSlot(in:highlight:)</code> 与 <code>draw(_:)</code> 里的槽绘制；<code>drawKnob()</code> 仅在靠右/靠下缩进 <code>2.5pt</code> 处绘制 <strong><code>3pt</code> 宽圆角半透明细滑块</strong>（静止 <code>0.24</code>、悬停 <code>0.44</code>），同时保留系统完整交互热区。"
+          ]},
+          { label: "可复用原则", type: "list", items: [
+            "<strong>操作 SwiftUI <code>ScrollView</code> 底层 <code>NSScrollView</code> 时，锚点必须放在滚动内容内部</strong>，用 <code>enclosingScrollView</code> 直达宿主，不要在外部遍历兄弟树猜位置。",
+            "<strong>要消除滚动条白槽和边框，不能只改 <code>controlSize</code></strong>，必须清空 <code>drawKnobSlot</code> 并锁定 <code>scrollerStyle = .overlay</code>。",
+            "<strong>视觉变细但热区不能缩</strong>：只缩小 <code>drawKnob()</code> 的绘制矩形到 3pt，保留原生 scroller 帧宽，兼顾极简外观与鼠标拖拽手感。"
+          ]},
+          { label: "代码位置", type: "text", content: "<code>Sources/InputTimeline/ThinScrollbarModifier.swift</code>（<code>PlushScrollView</code>、<code>EnclosingScrollViewAnchor</code>、<code>ThinOverlayScroller</code>），并在 <code>ContentView.swift</code>、<code>TimelineDetailSheet.swift</code>、<code>SettingsView.swift</code> 统一替换使用。" }
         ]
       }
     ];

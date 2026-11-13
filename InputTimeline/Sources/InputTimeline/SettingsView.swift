@@ -20,7 +20,7 @@ struct SettingsView: View {
     @State private var newExcludedApp = ""
 
     var body: some View {
-        ScrollView {
+        PlushScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 // Header
                 HStack {

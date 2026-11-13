@@ -83,7 +83,7 @@ struct TimelineDetailSheet: View {
             }
 
             // Reading surface
-            ScrollView {
+            PlushScrollView {
                 let displayed = showVisualControls
                     ? TimelineFormatters.formatDisplayText(entry.fullText)
                     : entry.fullText

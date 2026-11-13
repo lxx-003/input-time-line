@@ -30,6 +30,7 @@ struct InputTimelineApp: App {
                 }
         }
         .defaultSize(width: 1120, height: 740)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .toolbar) {
                 Button("刷新时间线") {
