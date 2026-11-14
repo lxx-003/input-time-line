@@ -74,7 +74,7 @@ struct TimelineDetailSheet: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    Text("可视化控制符（↩ ⌫ →）")
+                    Text("可视化控制符（↩ ⌫ ⇥ ←→↑↓）")
                         .font(PlushTheme.rounded(12, weight: .medium))
                         .foregroundStyle(PlushTheme.ink2)
 
@@ -87,8 +87,17 @@ struct TimelineDetailSheet: View {
                 let displayed = showVisualControls
                     ? TimelineFormatters.formatDisplayText(entry.fullText)
                     : entry.fullText
+                let placeholder = showVisualControls
+                    ? TimelineFormatters.blankPlaceholder(for: entry.fullText)
+                    : (entry.fullText.isEmpty ? "（空内容）" : nil)
 
-                if displayed.isEmpty {
+                if let placeholder {
+                    Text(placeholder)
+                        .font(PlushTheme.body(13.5))
+                        .foregroundStyle(PlushTheme.ink3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(18)
+                } else if displayed.isEmpty {
                     Text("（空内容）")
                         .font(PlushTheme.body(13.5))
                         .foregroundStyle(PlushTheme.ink3)

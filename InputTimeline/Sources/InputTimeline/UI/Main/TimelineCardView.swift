@@ -140,8 +140,8 @@ struct TimelineCardView: View {
                 }
                 .frame(minHeight: 26)
 
-                if item.text.isEmpty {
-                    Text("（空内容）")
+                if let placeholder = TimelineFormatters.blankPlaceholder(for: item.text) {
+                    Text(placeholder)
                         .font(PlushTheme.body(13))
                         .foregroundStyle(PlushTheme.ink3)
                 } else {
