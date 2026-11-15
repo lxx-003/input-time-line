@@ -7,13 +7,57 @@ extension AppModel {
         selectedDay = day
         currentPage = 0
         selectedAppFilter = nil
+        let targetRange = InsightsDateRange.singleDay(day)
+        insightsRange = targetRange
         guard !isPreviewMode else { return }
         Task {
             await scheduleLoadTimeline(for: day, reset: true)
+            if activeMainTab == .insights {
+                await loadInsights(for: targetRange)
+            }
+        }
+    }
+
+    func setMainTab(_ tab: MainContentTab) {
+        guard activeMainTab != tab else { return }
+        activeMainTab = tab
+        guard tab == .insights else { return }
+        if insightsRange.isSingleDay, let selectedDay, insightsRange.startDay != selectedDay {
+            insightsRange = .singleDay(selectedDay)
+        }
+        guard !isPreviewMode else { return }
+        if selectedInsights?.range != insightsRange {
+            let target = insightsRange
+            Task {
+                await loadInsights(for: target)
+            }
+        }
+    }
+
+    func setInsightsPreset(_ preset: InsightsRangePreset) {
+        setInsightsRange(InsightsDateRange.forPreset(preset))
+    }
+
+    func setInsightsRange(_ range: InsightsDateRange) {
+        insightsRange = range
+        if range.isSingleDay {
+            selectedDay = range.startDay
+            currentPage = 0
+            selectedAppFilter = nil
+        }
+        guard !isPreviewMode else { return }
+        Task {
+            await loadInsights(for: range)
+            if range.isSingleDay {
+                await scheduleLoadTimeline(for: range.startDay, reset: true)
+            }
         }
     }
 
     func setKindFilter(_ filter: TimelineKindFilter) {
+        if activeMainTab != .timeline {
+            activeMainTab = .timeline
+        }
         guard kindFilter != filter else { return }
         kindFilter = filter
         currentPage = 0

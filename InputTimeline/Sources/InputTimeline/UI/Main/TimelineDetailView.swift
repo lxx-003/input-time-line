@@ -19,10 +19,18 @@ struct TimelineDetailView: View {
                         .padding(.bottom, 12)
                 }
 
-                if let timeline = model.selectedTimeline {
+                if model.activeMainTab == .insights,
+                   (model.permissionGranted || !model.availableDays.isEmpty),
+                   let insights = model.selectedInsights {
+                    InsightsDashboardView(insights: insights)
+                } else if let timeline = model.selectedTimeline {
                     TimelineDetailHeaderCard(timeline: timeline)
                         .padding(.horizontal, 22)
-                        .padding(.bottom, 12)
+                        .padding(.bottom, 10)
+
+                    kindFilterBar(timeline: timeline)
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 10)
 
                     if timeline.items.isEmpty {
                         FilteredEmptyStateView(dayTotalCount: timeline.dayTotalCount)
@@ -94,81 +102,69 @@ struct TimelineDetailView: View {
     }
 
     private var topControlBar: some View {
-        let kindCounts = model.selectedTimeline?.kindCounts ?? [:]
-        let dayTotal = model.selectedTimeline?.dayTotalCount
-        let tabOptions: [PlushTabOption<TimelineKindFilter>] = [
+        let mainTabOptions: [PlushTabOption<MainContentTab>] = [
             PlushTabOption(
-                value: .all,
-                title: "全部",
-                count: dayTotal,
+                value: .timeline,
+                title: "时间线",
+                count: model.selectedTimeline?.dayTotalCount,
                 dotColor: nil
             ),
             PlushTabOption(
-                value: .keyboard,
-                title: "键盘",
-                count: dayTotal == nil ? nil : kindCounts[.keyboard, default: 0],
-                dotColor: PlushTheme.kindKeyboard
-            ),
-            PlushTabOption(
-                value: .copy,
-                title: "复制",
-                count: dayTotal == nil ? nil : kindCounts[.copy, default: 0],
-                dotColor: PlushTheme.kindCopy
-            ),
-            PlushTabOption(
-                value: .paste,
-                title: "粘贴",
-                count: dayTotal == nil ? nil : kindCounts[.paste, default: 0],
-                dotColor: PlushTheme.kindPaste
+                value: .insights,
+                title: "统计洞察",
+                count: nil,
+                dotColor: PlushTheme.selectA
             )
         ]
 
         return HStack(spacing: 12) {
             PlushSegmentedTabs(
-                options: tabOptions,
+                options: mainTabOptions,
                 selection: Binding(
-                    get: { model.kindFilter },
-                    set: { model.setKindFilter($0) }
+                    get: { model.activeMainTab },
+                    set: { model.setMainTab($0) }
                 )
             )
 
             Spacer(minLength: 8)
 
-            // Plush Pill Search Field (shadow only on background capsule)
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(PlushTheme.ink2)
+            if model.activeMainTab == .timeline {
+                // Plush Pill Search Field (shadow only on background capsule)
+                HStack(spacing: 7) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(PlushTheme.ink2)
 
-                TextField(
-                    "搜索文本或应用 (⌘F)",
-                    text: Binding(
-                        get: { model.searchText },
-                        set: { model.handleSearchTextChange($0) }
+                    TextField(
+                        "搜索文本或应用 (⌘F)",
+                        text: Binding(
+                            get: { model.searchText },
+                            set: { model.handleSearchTextChange($0) }
+                        )
                     )
-                )
-                .textFieldStyle(.plain)
-                .font(PlushTheme.rounded(12.5, weight: .medium))
-                .foregroundStyle(PlushTheme.ink)
-                .focused($isSearchFocused)
+                    .textFieldStyle(.plain)
+                    .font(PlushTheme.rounded(12.5, weight: .medium))
+                    .foregroundStyle(PlushTheme.ink)
+                    .focused($isSearchFocused)
 
-                if !model.searchText.isEmpty {
-                    Button {
-                        model.handleSearchTextChange("")
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
+                    if !model.searchText.isEmpty {
+                        Button {
+                            model.handleSearchTextChange("")
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .buttonStyle(PlushCircleIconButtonStyle(diameter: 18, variant: .secondary))
                     }
-                    .buttonStyle(PlushCircleIconButtonStyle(diameter: 18, variant: .secondary))
                 }
+                .padding(.horizontal, 12)
+                .frame(width: 230, height: 34)
+                .background(
+                    Capsule()
+                        .fill(PlushTheme.surface)
+                        .plushSoftShadow()
+                )
             }
-            .padding(.horizontal, 12)
-            .frame(width: 230, height: 34)
-            .background(
-                Capsule()
-                    .fill(PlushTheme.surface)
-                    .plushSoftShadow()
-            )
 
             Button {
                 model.refreshAll(showFeedback: true)
@@ -191,6 +187,49 @@ struct TimelineDetailView: View {
             .buttonStyle(PlushPillButtonStyle(variant: .surface, size: .sm))
             .disabled(model.selectedDay == nil)
             .help("导出当前日期 JSON")
+        }
+    }
+
+    private func kindFilterBar(timeline: DailyTimelinePage) -> some View {
+        let kindCounts = timeline.kindCounts
+        let dayTotal = timeline.dayTotalCount
+        let tabOptions: [PlushTabOption<TimelineKindFilter>] = [
+            PlushTabOption(
+                value: .all,
+                title: "全部",
+                count: dayTotal,
+                dotColor: nil
+            ),
+            PlushTabOption(
+                value: .keyboard,
+                title: "键盘",
+                count: kindCounts[.keyboard, default: 0],
+                dotColor: PlushTheme.kindKeyboard
+            ),
+            PlushTabOption(
+                value: .copy,
+                title: "复制",
+                count: kindCounts[.copy, default: 0],
+                dotColor: PlushTheme.kindCopy
+            ),
+            PlushTabOption(
+                value: .paste,
+                title: "粘贴",
+                count: kindCounts[.paste, default: 0],
+                dotColor: PlushTheme.kindPaste
+            )
+        ]
+
+        return HStack(spacing: 10) {
+            PlushSegmentedTabs(
+                options: tabOptions,
+                selection: Binding(
+                    get: { model.kindFilter },
+                    set: { model.setKindFilter($0) }
+                )
+            )
+
+            Spacer()
         }
     }
 

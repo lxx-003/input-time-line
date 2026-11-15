@@ -21,9 +21,12 @@ final class AppModel: ObservableObject {
     @Published var tapCreationFailed = false
     @Published var launchAtLogin = LaunchAtLoginManager.preferenceEnabled
     @Published var statusMessage = RecordingPreference.enabled ? "记录开启中" : "记录已暂停"
+    @Published var activeMainTab: MainContentTab = .timeline
+    @Published var insightsRange: InsightsDateRange = .forPreset(.today)
     @Published var kindFilter: TimelineKindFilter = .all
     @Published var selectedAppFilter: String?
     @Published var searchText = ""
+    @Published var selectedInsights: DailyInsights?
     @Published var inspectedEntry: InspectedTimelineEntry?
     @Published var storageDirectoryPath = "~/Library/Application Support/InputTimeline"
     @Published var activeToast: PlushToastMessage?
@@ -43,6 +46,16 @@ final class AppModel: ObservableObject {
     var toastDismissTask: Task<Void, Never>?
     var pauseTimerTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
+    private var insightsLoadTask: Task<Void, Never>?
+    private var insightsRefreshTask: Task<Void, Never>?
+
+    var isInsightsMultiDayMode: Bool {
+        activeMainTab == .insights && !insightsRange.isSingleDay
+    }
+
+    var sidebarHighlightedRangeDays: Set<String> {
+        isInsightsMultiDayMode ? insightsRange.highlightedDaySet : []
+    }
 
     private lazy var keyboardMonitor = KeyboardMonitor(
         onKeyboardText: { [weak self] text, appName, date in
@@ -52,6 +65,10 @@ final class AppModel: ObservableObject {
         onClipboardShortcut: { [weak self] action, appName, date in
             guard let self else { return }
             Task { await self.handleClipboardShortcut(action, appName: appName, at: date) }
+        },
+        onKeyPress: { [weak self] keyCode, appName, date in
+            guard let self else { return }
+            Task { await self.handleKeyPress(keyCode, appName: appName, at: date) }
         }
     )
 
@@ -88,6 +105,9 @@ final class AppModel: ObservableObject {
             } else {
                 await loadInitialSelection()
             }
+            if activeMainTab == .insights {
+                await loadInsights(for: insightsRange)
+            }
             await refreshMenuBarRecents()
             if showFeedback {
                 showToast(title: "时间线已刷新", tone: .info)
@@ -118,6 +138,8 @@ final class AppModel: ObservableObject {
         guard !isPreviewMode else { return }
         pauseTimerTask?.cancel()
         toastDismissTask?.cancel()
+        insightsLoadTask?.cancel()
+        insightsRefreshTask?.cancel()
         keyboardMonitor.stop()
         Task {
             try? await store.flush()
@@ -162,6 +184,48 @@ final class AppModel: ObservableObject {
         await task.value
     }
 
+    private func handleKeyPress(_ keyCode: Int, appName: String?, at date: Date) async {
+        guard !isAppExcluded(appName) else { return }
+        do {
+            if let day = try await store.handleKeyPress(keyCode: keyCode, at: date) {
+                await refreshDays()
+                if selectedDay == nil || selectedDay == day {
+                    selectedDay = day
+                    if selectedTimeline?.date != day {
+                        await scheduleLoadTimeline(for: day, reset: true)
+                    }
+                }
+                if activeMainTab == .insights && insightsRange.highlightedDaySet.contains(day) {
+                    scheduleInsightsRefresh(for: insightsRange)
+                }
+            }
+        } catch {
+            // Keep key-count tracking silent unless timeline write fails
+        }
+    }
+
+    private func scheduleInsightsRefresh(for range: InsightsDateRange) {
+        insightsRefreshTask?.cancel()
+        insightsRefreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled, let self else { return }
+            await self.loadInsights(for: range)
+        }
+    }
+
+    func loadInsights(for range: InsightsDateRange) async {
+        guard !isPreviewMode else { return }
+        insightsLoadTask?.cancel()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            let loaded = try? await self.store.insights(for: range)
+            guard !Task.isCancelled, let loaded, self.insightsRange == range else { return }
+            self.selectedInsights = loaded
+        }
+        insightsLoadTask = task
+        await task.value
+    }
+
     private func handleKeyboardText(_ text: String, appName: String?, at date: Date) async {
         guard !isAppExcluded(appName) else { return }
         do {
@@ -203,6 +267,9 @@ final class AppModel: ObservableObject {
             currentPage = 0
             await scheduleLoadTimeline(for: day, reset: true)
         }
+        if activeMainTab == .insights && insightsRange.highlightedDaySet.contains(day) && !insightsRange.isSingleDay {
+            await loadInsights(for: insightsRange)
+        }
     }
 
     private func refreshMenuBarRecents() async {
@@ -228,11 +295,13 @@ final class AppModel: ObservableObject {
     private func loadInitialSelection() async {
         if let first = availableDays.first {
             selectedDay = first
+            insightsRange = .singleDay(first)
             currentPage = 0
             await scheduleLoadTimeline(for: first, reset: true)
         } else {
             selectedDay = nil
             selectedTimeline = nil
+            selectedInsights = nil
         }
     }
 
@@ -258,6 +327,15 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             if reset || selectedTimeline?.date != day {
+                if insightsRange.isSingleDay && (insightsRange.startDay == day || selectedDay == day) {
+                    let rangeToLoad = InsightsDateRange.singleDay(day)
+                    let insights = try? await store.insights(for: rangeToLoad)
+                    guard !Task.isCancelled else { return }
+                    if insightsRange.isSingleDay {
+                        insightsRange = rangeToLoad
+                        selectedInsights = insights
+                    }
+                }
                 selectedTimeline = loadedPage
             } else {
                 let mergedItems = (selectedTimeline?.items ?? []) + loadedPage.items

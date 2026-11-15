@@ -37,8 +37,11 @@ struct ContentView: View {
         .overlay {
             // Keyboard shortcuts layer
             Group {
-                Button("") { isSearchFocused = true }
-                    .keyboardShortcut("f", modifiers: .command)
+                Button("") {
+                    model.setMainTab(.timeline)
+                    isSearchFocused = true
+                }
+                .keyboardShortcut("f", modifiers: .command)
                 Button("") { model.setKindFilter(.all) }
                     .keyboardShortcut("1", modifiers: .command)
                 Button("") { model.setKindFilter(.keyboard) }

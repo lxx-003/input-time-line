@@ -5,6 +5,7 @@ import SwiftUI
 struct PlushMiniCalendar: View {
     let availableDays: Set<String>
     @Binding var selectedDay: String?
+    var highlightedRangeDays: Set<String> = []
     let onSelectDay: (String) -> Void
 
     @State private var displayedMonth: Date
@@ -17,10 +18,12 @@ struct PlushMiniCalendar: View {
     init(
         availableDays: Set<String>,
         selectedDay: Binding<String?>,
+        highlightedRangeDays: Set<String> = [],
         onSelectDay: @escaping (String) -> Void
     ) {
         self.availableDays = availableDays
         self._selectedDay = selectedDay
+        self.highlightedRangeDays = highlightedRangeDays
         self.onSelectDay = onSelectDay
 
         let initialDate = selectedDay.wrappedValue.flatMap(TimelineFormatters.parseDay) ?? Date()
@@ -73,7 +76,9 @@ struct PlushMiniCalendar: View {
                     if let date = cell.date {
                         let dayKey = TimelineFormatters.formatDayKey(date)
                         let hasRecords = availableDays.contains(dayKey)
-                        let isSelected = selectedDay == dayKey
+                        let isRangeMode = !highlightedRangeDays.isEmpty
+                        let isInRange = highlightedRangeDays.contains(dayKey)
+                        let isSelected = !isRangeMode && selectedDay == dayKey
                         let isToday = calendar.isDateInToday(date)
 
                         Button {
@@ -89,6 +94,9 @@ struct PlushMiniCalendar: View {
                                         .fill(PlushTheme.selectGradient)
                                         .matchedGeometryEffect(id: "calendar-day-pill", in: selectionNamespace)
                                         .shadow(color: PlushTheme.selectA.opacity(0.28), radius: 5, x: 0, y: 2)
+                                } else if isInRange {
+                                    Circle()
+                                        .fill(PlushTheme.selectPlate)
                                 } else if isToday {
                                     Circle()
                                         .fill(PlushTheme.fill)
@@ -96,11 +104,11 @@ struct PlushMiniCalendar: View {
 
                                 VStack(spacing: 1) {
                                     Text("\(calendar.component(.day, from: date))")
-                                        .font(PlushTheme.rounded(11.5, weight: isSelected || hasRecords ? .semibold : .regular).monospacedDigit())
+                                        .font(PlushTheme.rounded(11.5, weight: isSelected || isInRange || hasRecords ? .semibold : .regular).monospacedDigit())
                                         .foregroundStyle(
                                             isSelected
                                             ? PlushTheme.onSelect
-                                            : (hasRecords ? PlushTheme.ink : PlushTheme.ink3.opacity(0.65))
+                                            : (isInRange || hasRecords ? PlushTheme.ink : PlushTheme.ink3.opacity(0.65))
                                         )
 
                                     Circle()

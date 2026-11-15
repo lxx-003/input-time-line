@@ -11,6 +11,7 @@ extension AppModel {
         model.availableDaySet = Set(model.availableDays)
         model.groupedDaySections = TimelineFormatters.groupDays(model.availableDays)
         model.selectedDay = "2026-11-13"
+        model.insightsRange = .singleDay("2026-11-13")
 
         let rawItems: [TimelineItem] = [
             TimelineItem(
@@ -64,6 +65,19 @@ extension AppModel {
             activeSearchQuery: "",
             loadedCount: 4,
             hasMore: true
+        )
+
+        let sampleKeyCounts: [String: Int] = [
+            "49": 620, "51": 390, "0": 280, "1": 240, "2": 210, "14": 340,
+            "13": 195, "17": 180, "34": 230, "31": 175, "45": 165, "55": 310,
+            "56": 150, "58": 140, "36": 190, "48": 130, "53": 48, "122": 64,
+            "18": 120, "19": 95, "3": 110, "5": 90, "4": 135, "38": 145,
+            "40": 115, "37": 125, "6": 75, "7": 85, "8": 130, "9": 95
+        ]
+        model.selectedInsights = TimelineInsightsEngine.computeDailyInsights(
+            date: "2026-11-13",
+            items: rawItems,
+            rawKeyCounts: sampleKeyCounts
         )
         return model
     }

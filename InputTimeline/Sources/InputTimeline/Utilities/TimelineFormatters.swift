@@ -120,6 +120,71 @@ enum TimelineFormatters {
         return (fullDate, weekday)
     }
 
+    static func enumerateDays(from startDay: String, to endDay: String) -> [String] {
+        guard let start = parseDay(startDay), let end = parseDay(endDay) else {
+            return startDay <= endDay ? [startDay] : [endDay]
+        }
+        let calendar = Calendar.current
+        let normalizedStart = calendar.startOfDay(for: min(start, end))
+        let normalizedEnd = calendar.startOfDay(for: max(start, end))
+
+        var result: [String] = []
+        var cursor = normalizedStart
+        var guardCount = 0
+        while cursor <= normalizedEnd && guardCount < 366 {
+            result.append(formatDayKey(cursor))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+            guardCount += 1
+        }
+        return result
+    }
+
+    static func shortMonthDay(_ day: String) -> String {
+        guard let date = parseDay(day) else { return day }
+        let comps = Calendar.current.dateComponents([.month, .day], from: date)
+        return String(format: "%d/%02d", comps.month ?? 0, comps.day ?? 0)
+    }
+
+    static func dailyChartAxisLabel(_ day: String, totalDays: Int) -> String {
+        guard let date = parseDay(day) else { return day }
+        let calendar = Calendar.current
+        if totalDays <= 7 {
+            if calendar.isDateInToday(date) { return "今天" }
+            if calendar.isDateInYesterday(date) { return "昨天" }
+            return weekdayFormatter.string(from: date)
+        }
+        return shortMonthDay(day)
+    }
+
+    static func dailyChartFullLabel(_ day: String) -> String {
+        guard let date = parseDay(day) else { return day }
+        let calendar = Calendar.current
+        let md = chinesePaddedDateFormatter.string(from: date)
+        if calendar.isDateInToday(date) { return "\(md) · 今天" }
+        if calendar.isDateInYesterday(date) { return "\(md) · 昨天" }
+        return "\(md) · \(weekdayFormatter.string(from: date))"
+    }
+
+    static func insightsHeaderDisplay(_ range: InsightsDateRange) -> (title: String, subtitleTag: String?) {
+        if range.isSingleDay {
+            return detailHeaderDisplay(range.startDay)
+        }
+
+        let startShort = shortMonthDay(range.startDay)
+        let endShort = shortMonthDay(range.endDay)
+        let dayCount = max(1, range.resolvedDays().count)
+
+        switch range.preset {
+        case .last7Days:
+            return ("最近 7 天", "\(startShort) – \(endShort)")
+        case .thisWeek:
+            return ("本周概览", "\(startShort) – \(endShort) · \(dayCount) 天")
+        case .custom, .today, .yesterday:
+            return ("\(startShort) – \(endShort)", "共 \(dayCount) 天")
+        }
+    }
+
     static func groupDays(_ days: [String]) -> [DaySection] {
         let calendar = Calendar.current
         let now = Date()

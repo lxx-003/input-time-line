@@ -40,6 +40,7 @@ struct TimelineSidebarView: View {
                             if let day { model.selectDay(day) }
                         }
                     ),
+                    highlightedRangeDays: model.sidebarHighlightedRangeDays,
                     onSelectDay: { day in
                         model.selectDay(day)
                     }
@@ -71,9 +72,12 @@ struct TimelineSidebarView: View {
                         ForEach(model.groupedDaySections) { section in
                             Section {
                                 ForEach(section.days) { entry in
+                                    let isRangeMode = model.isInsightsMultiDayMode
+                                    let isInRange = model.sidebarHighlightedRangeDays.contains(entry.id)
                                     SidebarDayRow(
                                         entry: entry,
-                                        isSelected: model.selectedDay == entry.id
+                                        isSelected: !isRangeMode && model.selectedDay == entry.id,
+                                        isInRange: isInRange
                                     ) {
                                         model.selectDay(entry.id)
                                     }
@@ -213,6 +217,7 @@ struct TimelineSidebarView: View {
 private struct SidebarDayRow: View {
     let entry: TimelineFormatters.DayEntry
     let isSelected: Bool
+    let isInRange: Bool
     let action: () -> Void
 
     @State private var isHovered = false
@@ -221,12 +226,16 @@ private struct SidebarDayRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(isSelected ? AnyShapeStyle(PlushTheme.selectGradient) : AnyShapeStyle(Color.clear))
+                    .fill(
+                        isSelected
+                        ? AnyShapeStyle(PlushTheme.selectGradient)
+                        : (isInRange ? AnyShapeStyle(PlushTheme.selectA) : AnyShapeStyle(Color.clear))
+                    )
                     .frame(width: 7, height: 7)
 
                 Text(entry.primary)
-                    .font(PlushTheme.rounded(12.5, weight: isSelected ? .semibold : .medium).monospacedDigit())
-                    .foregroundStyle(isSelected ? PlushTheme.ink : PlushTheme.ink2)
+                    .font(PlushTheme.rounded(12.5, weight: isSelected || isInRange ? .semibold : .medium).monospacedDigit())
+                    .foregroundStyle(isSelected || isInRange ? PlushTheme.ink : PlushTheme.ink2)
 
                 Spacer()
 
@@ -246,7 +255,11 @@ private struct SidebarDayRow: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: PlushTheme.Radius.item, style: .continuous)
-                    .fill(isSelected ? PlushTheme.surfaceElevated : (isHovered ? PlushTheme.fillStrong.opacity(0.65) : .clear))
+                    .fill(
+                        isSelected
+                        ? PlushTheme.surfaceElevated
+                        : (isInRange ? PlushTheme.selectPlate : (isHovered ? PlushTheme.fillStrong.opacity(0.65) : .clear))
+                    )
             )
             .contentShape(RoundedRectangle(cornerRadius: PlushTheme.Radius.item, style: .continuous))
         }
