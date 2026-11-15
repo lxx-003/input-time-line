@@ -33,9 +33,7 @@ struct TimelineDetailSheet: View {
                         if let icon = AppIconProvider.shared.icon(for: appName) {
                             Image(nsImage: icon)
                                 .resizable()
-                                .interpolation(.high)
                                 .frame(width: 15, height: 15)
-                                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                         }
                         Text(appName)
                             .font(PlushTheme.rounded(12.5, weight: .semibold))

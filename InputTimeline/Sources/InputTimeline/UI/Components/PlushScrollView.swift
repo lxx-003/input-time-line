@@ -41,7 +41,7 @@ private struct EnclosingScrollViewAnchor: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: AnchorNSView, context: Context) {
-        if nsView.window != nil {
+        if nsView.window != nil && !context.coordinator.hasValidAttachment {
             context.coordinator.attach(from: nsView)
         }
     }
@@ -62,6 +62,14 @@ private struct EnclosingScrollViewAnchor: NSViewRepresentable {
     final class Coordinator {
         private weak var scrollView: NSScrollView?
         nonisolated(unsafe) private var styleObserver: NSObjectProtocol?
+
+        var hasValidAttachment: Bool {
+            guard let scrollView else { return false }
+            if scrollView.hasVerticalScroller && !(scrollView.verticalScroller is ThinOverlayScroller) {
+                return false
+            }
+            return true
+        }
 
         deinit {
             if let styleObserver {

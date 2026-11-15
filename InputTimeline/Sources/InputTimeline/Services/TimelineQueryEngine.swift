@@ -108,6 +108,14 @@ enum TimelineQueryEngine {
         }
         pageDecoder.userInfo[PagingContext.searchQueryKey] = searchQuery
         let snapshot = try pageDecoder.decode(TimelinePageSnapshot.self, from: data)
+        let sortedApps = snapshot.appCounts
+            .sorted { lhs, rhs in
+                if lhs.value != rhs.value { return lhs.value > rhs.value }
+                return lhs.key < rhs.key
+            }
+            .map { TimelineAppCount(name: $0.key, count: $0.value) }
+        let trimmedApp = appFilter?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activeApp = (trimmedApp?.isEmpty == false) ? trimmedApp : nil
 
         return DailyTimelinePage(
             date: snapshot.date,
@@ -117,8 +125,45 @@ enum TimelineQueryEngine {
             dayTotalCount: snapshot.dayTotalCount,
             kindCounts: snapshot.kindCounts,
             appCounts: snapshot.appCounts,
+            sortedApps: sortedApps,
+            activeKindFilter: kindFilter,
+            activeAppFilter: activeApp,
+            activeSearchQuery: searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
             loadedCount: min(snapshot.totalCount, (page + 1) * pageSize),
             hasMore: snapshot.hasMore
+        )
+    }
+
+    struct DayAggregates: Sendable {
+        let dayTotalCount: Int
+        let kindCounts: [TimelineItemKind: Int]
+        let appCounts: [String: Int]
+        let sortedApps: [TimelineAppCount]
+    }
+
+    static func computeDayAggregates(from items: [TimelineItem]) -> DayAggregates {
+        var kindCounts: [TimelineItemKind: Int] = [:]
+        var appCounts: [String: Int] = [:]
+
+        for item in items {
+            kindCounts[item.kind, default: 0] += 1
+            if let app = item.appName?.trimmingCharacters(in: .whitespacesAndNewlines), !app.isEmpty {
+                appCounts[app, default: 0] += 1
+            }
+        }
+
+        let sortedApps = appCounts
+            .sorted { lhs, rhs in
+                if lhs.value != rhs.value { return lhs.value > rhs.value }
+                return lhs.key < rhs.key
+            }
+            .map { TimelineAppCount(name: $0.key, count: $0.value) }
+
+        return DayAggregates(
+            dayTotalCount: items.count,
+            kindCounts: kindCounts,
+            appCounts: appCounts,
+            sortedApps: sortedApps
         )
     }
 
@@ -126,6 +171,7 @@ enum TimelineQueryEngine {
         day: String,
         silenceGapSeconds: Int,
         sourceItems: [TimelineItem],
+        precomputedAggregates: DayAggregates? = nil,
         page: Int,
         pageSize: Int,
         previewTextLimit: Int,
@@ -133,17 +179,29 @@ enum TimelineQueryEngine {
         appFilter: String?,
         searchQuery: String
     ) -> DailyTimelinePage {
-        var kindCounts: [TimelineItemKind: Int] = [:]
-        var appCounts: [String: Int] = [:]
-        var filteredItems: [TimelineItem] = []
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedApp = appFilter?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activeApp = (trimmedApp?.isEmpty == false) ? trimmedApp : nil
 
-        for item in sourceItems {
-            kindCounts[item.kind, default: 0] += 1
-            if let app = item.appName?.trimmingCharacters(in: .whitespacesAndNewlines), !app.isEmpty {
-                appCounts[app, default: 0] += 1
-            }
-            if matches(item, kindFilter: kindFilter, appFilter: appFilter, searchQuery: trimmedQuery) {
+        let aggregates: DayAggregates
+        if let precomputedAggregates {
+            aggregates = precomputedAggregates
+        } else {
+            aggregates = computeDayAggregates(from: sourceItems)
+        }
+
+        var filteredItems: [TimelineItem]
+        if kindFilter == nil && activeApp == nil && trimmedQuery.isEmpty {
+            filteredItems = sourceItems
+        } else {
+            filteredItems = []
+            filteredItems.reserveCapacity(min(sourceItems.count, 256))
+            for item in sourceItems where matches(
+                item,
+                kindFilter: kindFilter,
+                appFilter: activeApp,
+                searchQuery: trimmedQuery
+            ) {
                 filteredItems.append(item)
             }
         }
@@ -159,9 +217,13 @@ enum TimelineQueryEngine {
             silenceGapSeconds: silenceGapSeconds,
             items: Array(pageItems),
             totalCount: filteredItems.count,
-            dayTotalCount: sourceItems.count,
-            kindCounts: kindCounts,
-            appCounts: appCounts,
+            dayTotalCount: aggregates.dayTotalCount,
+            kindCounts: aggregates.kindCounts,
+            appCounts: aggregates.appCounts,
+            sortedApps: aggregates.sortedApps,
+            activeKindFilter: kindFilter,
+            activeAppFilter: activeApp,
+            activeSearchQuery: trimmedQuery,
             loadedCount: min(filteredItems.count, (page + 1) * pageSize),
             hasMore: filteredItems.count > ((page + 1) * pageSize)
         )
@@ -211,12 +273,32 @@ enum TimelineQueryEngine {
     static func makeDisplayItem(from item: TimelineItem, limit: Int) -> TimelineDisplayItem {
         let originalCount = item.text.count
         var previewItem = item
-        previewItem.text = previewText(item.text, limit: limit)
+        let truncated = limit > 0 && originalCount > limit
+        if truncated {
+            previewItem.text = String(item.text.prefix(limit)) + "..."
+        }
+        let timeInfo = TimelineFormatters.timeLabel(for: previewItem)
+        let placeholder = TimelineFormatters.blankPlaceholder(for: previewItem.text)
+        let presentation: (formatted: String, hasControlSymbols: Bool, styled: AttributedString)
+        if placeholder != nil {
+            presentation = ("", false, AttributedString())
+        } else {
+            presentation = TimelineFormatters.buildPreviewPresentation(for: previewItem.text)
+        }
+        let shouldAllowInspect = truncated || originalCount > 160 || previewItem.text.contains("\n")
+
         return TimelineDisplayItem(
             id: item.id,
             item: previewItem,
             originalCharacterCount: originalCount,
-            isTruncated: limit > 0 && originalCount > limit
+            isTruncated: truncated,
+            timeClock: timeInfo.clock,
+            durationLabel: timeInfo.duration,
+            blankPlaceholder: placeholder,
+            formattedPreview: presentation.formatted,
+            hasControlSymbols: presentation.hasControlSymbols,
+            styledPreview: presentation.styled,
+            shouldAllowInspect: shouldAllowInspect
         )
     }
 

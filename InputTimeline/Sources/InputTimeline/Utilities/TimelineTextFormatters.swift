@@ -22,17 +22,20 @@ extension TimelineFormatters {
             return "（空内容）"
         }
 
-        let display = formatDisplayText(raw)
-        let hasVisibleContent = display.unicodeScalars.contains { scalar in
+        // Fast check without allocating formatted string first
+        for scalar in raw.unicodeScalars {
             if CharacterSet.whitespacesAndNewlines.contains(scalar) {
-                return false
+                continue
             }
             if invisibleFormattingScalars.contains(scalar.value) {
-                return false
+                continue
             }
-            return true
+            if !isControlOrHiddenScalar(scalar) {
+                return nil
+            }
+            // Any mapped control character (like return/tab/backspace/arrows) counts as visible content
+            return nil
         }
-        guard !hasVisibleContent else { return nil }
 
         let spaceCount = raw.filter { $0 == " " || $0 == "\u{3000}" }.count
         if spaceCount > 0 {
@@ -42,6 +45,116 @@ extension TimelineFormatters {
             return "（空内容）"
         }
         return "（不可见字符）"
+    }
+
+    static func buildPreviewPresentation(for raw: String) -> (formatted: String, hasControlSymbols: Bool, styled: AttributedString) {
+        var normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
+        while normalized.hasSuffix("\n") {
+            normalized.removeLast()
+        }
+
+        let hasControls = normalized.unicodeScalars.contains(where: isControlOrHiddenScalar)
+        if !hasControls {
+            return (normalized, false, AttributedString(normalized))
+        }
+
+        var plainOutput = ""
+        plainOutput.reserveCapacity(normalized.count + 8)
+
+        var attributed = AttributedString()
+        var textBuffer = ""
+
+        func flushTextBuffer() {
+            guard !textBuffer.isEmpty else { return }
+            attributed.append(AttributedString(textBuffer))
+            plainOutput.append(textBuffer)
+            textBuffer = ""
+        }
+
+        func appendControl(_ symbol: String, trailingNewline: Bool = false, trailingSpace: Bool = false) {
+            flushTextBuffer()
+            var attr = AttributedString(symbol)
+            attr.foregroundColor = PlushTheme.ink3
+            attributed.append(attr)
+            plainOutput.append(symbol)
+            if trailingNewline {
+                textBuffer.append("\n")
+            } else if trailingSpace {
+                textBuffer.append(" ")
+            }
+        }
+
+        let scalars = normalized
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            let char = scalars[index]
+            let nextIndex = scalars.index(after: index)
+            let isLast = nextIndex == scalars.endIndex
+
+            switch char {
+            case "\r", "\u{03}":
+                appendControl("↩", trailingNewline: !isLast)
+            case "\t":
+                appendControl("⇥", trailingSpace: true)
+            case "\u{08}":
+                appendControl("⌫")
+            case "\u{7F}":
+                appendControl("⌦")
+            case "\u{1B}":
+                appendControl("⎋")
+            case "\u{1C}":
+                appendControl("←")
+            case "\u{1D}":
+                appendControl("→")
+            case "\u{1E}":
+                appendControl("↑")
+            case "\u{1F}":
+                appendControl("↓")
+            case "\u{10}":
+                appendControl("[Fn]")
+            case "\u{01}":
+                appendControl("↖")
+            case "\u{04}":
+                appendControl("↘")
+            case "\u{0B}":
+                appendControl("⇞")
+            case "\u{0C}":
+                appendControl("⇟")
+            case "\u{05}":
+                appendControl("[Help]")
+            default:
+                if char.unicodeScalars.count == 1,
+                   let scalar = char.unicodeScalars.first,
+                   isControlOrHiddenScalar(scalar) {
+                    appendControl("·")
+                } else {
+                    textBuffer.append(char)
+                }
+            }
+            index = nextIndex
+        }
+        flushTextBuffer()
+
+        return (plainOutput, true, attributed)
+    }
+
+    static func highlightedAttributedString(_ text: String, base: AttributedString? = nil, query: String) -> AttributedString {
+        var attr = base ?? AttributedString(text)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return attr }
+
+        let lowerText = text.lowercased()
+        let lowerQuery = trimmed.lowercased()
+        var searchStart = lowerText.startIndex
+
+        while let range = lowerText.range(of: lowerQuery, range: searchStart..<lowerText.endIndex) {
+            if let attrRange = Range(range, in: attr) {
+                attr[attrRange].backgroundColor = PlushTheme.selectMark
+                attr[attrRange].foregroundColor = PlushTheme.ink
+            }
+            searchStart = range.upperBound
+        }
+        return attr
     }
 
     static func singleLineSnippet(_ raw: String, limit: Int = 72) -> String {
@@ -165,25 +278,6 @@ extension TimelineFormatters {
             return Text("")
         }
         return segments.dropFirst().reduce(segments[0], +)
-    }
-
-    static func highlightedAttributedString(_ text: String, query: String) -> AttributedString {
-        var attr = AttributedString(text)
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return attr }
-
-        let lowerText = text.lowercased()
-        let lowerQuery = trimmed.lowercased()
-        var searchStart = lowerText.startIndex
-
-        while let range = lowerText.range(of: lowerQuery, range: searchStart..<lowerText.endIndex) {
-            if let attrRange = Range(range, in: attr) {
-                attr[attrRange].backgroundColor = PlushTheme.selectMark
-                attr[attrRange].foregroundColor = PlushTheme.ink
-            }
-            searchStart = range.upperBound
-        }
-        return attr
     }
 
     private static func highlightedTextSegment(_ chunk: String, query: String) -> Text {

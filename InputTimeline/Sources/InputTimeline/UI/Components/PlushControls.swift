@@ -93,9 +93,7 @@ struct PlushSegmentedTabs<Value: Hashable>: View {
                 let isHovered = hoveredValue == option.value
 
                 Button {
-                    withAnimation(PlushTheme.spring) {
-                        selection = option.value
-                    }
+                    selection = option.value
                 } label: {
                     HStack(spacing: 5) {
                         if let dotColor = option.dotColor {
@@ -118,7 +116,7 @@ struct PlushSegmentedTabs<Value: Hashable>: View {
                                     Capsule()
                                         .fill(isSelected ? PlushTheme.fill : PlushTheme.panelTint.opacity(0.65))
                                 )
-                                .plushNumericTransition()
+                                .animation(nil, value: selection)
                         }
                     }
                     .padding(.horizontal, 11)
@@ -139,6 +137,7 @@ struct PlushSegmentedTabs<Value: Hashable>: View {
                 }
             }
         }
+        .animation(PlushTheme.spring, value: selection)
         .padding(3.5)
         .background(
             Capsule()

@@ -67,11 +67,25 @@ struct DailyTimeline: Codable, Hashable {
     let items: [TimelineItem]
 }
 
+struct TimelineAppCount: Identifiable, Hashable {
+    let name: String
+    let count: Int
+
+    var id: String { name }
+}
+
 struct TimelineDisplayItem: Identifiable, Hashable {
     let id: UUID
     let item: TimelineItem
     let originalCharacterCount: Int
     let isTruncated: Bool
+    let timeClock: String
+    let durationLabel: String?
+    let blankPlaceholder: String?
+    let formattedPreview: String
+    let hasControlSymbols: Bool
+    let styledPreview: AttributedString
+    let shouldAllowInspect: Bool
 }
 
 struct DailyTimelinePage: Hashable {
@@ -82,6 +96,10 @@ struct DailyTimelinePage: Hashable {
     let dayTotalCount: Int
     let kindCounts: [TimelineItemKind: Int]
     let appCounts: [String: Int]
+    let sortedApps: [TimelineAppCount]
+    let activeKindFilter: TimelineItemKind?
+    let activeAppFilter: String?
+    let activeSearchQuery: String
     let loadedCount: Int
     let hasMore: Bool
 }

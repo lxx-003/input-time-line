@@ -1,6 +1,15 @@
 import Foundation
 
 actor TimelineStore {
+    private struct CachedDayTimeline {
+        let date: String
+        let silenceGapSeconds: Int
+        let items: [TimelineItem]
+        let aggregates: TimelineQueryEngine.DayAggregates
+        let fileSize: Int?
+        let modificationDate: Date?
+    }
+
     private let fileManager = FileManager.default
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -12,6 +21,10 @@ actor TimelineStore {
     private var currentDay: String?
     private var items: [TimelineItem] = []
     private var pendingKeyboardSegment: KeyboardSegment?
+    private var currentDayAggregates: TimelineQueryEngine.DayAggregates?
+    private var dayCache: [String: CachedDayTimeline] = [:]
+    private var dayCacheOrder: [String] = []
+    private let maxCachedDays = 8
 
     init(
         silenceGapSeconds: Int = RecordingPreference.silenceGapSeconds,
@@ -74,6 +87,7 @@ actor TimelineStore {
             pendingKeyboardSegment = KeyboardSegment(start: date, end: date, appName: appName, text: text)
         }
 
+        currentDayAggregates = nil
         try persistCurrentDay()
         return currentDay
     }
@@ -91,6 +105,7 @@ actor TimelineStore {
                 text: text
             )
         )
+        currentDayAggregates = nil
         try persistCurrentDay()
         return currentDay
     }
@@ -105,10 +120,19 @@ actor TimelineStore {
         searchQuery: String = ""
     ) async throws -> DailyTimelinePage {
         if day == currentDay {
+            let previewItems = flushedItemsForPreview()
+            let aggregates: TimelineQueryEngine.DayAggregates
+            if let cachedAggregates = currentDayAggregates {
+                aggregates = cachedAggregates
+            } else {
+                aggregates = TimelineQueryEngine.computeDayAggregates(from: previewItems)
+                currentDayAggregates = aggregates
+            }
             return TimelineQueryEngine.makeTimelinePage(
                 day: day,
                 silenceGapSeconds: silenceGapSeconds,
-                sourceItems: flushedItemsForPreview(),
+                sourceItems: previewItems,
+                precomputedAggregates: aggregates,
                 page: page,
                 pageSize: pageSize,
                 previewTextLimit: previewTextLimit,
@@ -118,30 +142,37 @@ actor TimelineStore {
             )
         }
 
-        let url = try fileURL(for: day)
-        guard fileManager.fileExists(atPath: url.path) else {
-            return DailyTimelinePage(
-                date: day,
-                silenceGapSeconds: silenceGapSeconds,
-                items: [],
-                totalCount: 0,
-                dayTotalCount: 0,
-                kindCounts: [:],
-                appCounts: [:],
-                loadedCount: 0,
-                hasMore: false
+        if let cached = try loadCachedDay(for: day) {
+            return TimelineQueryEngine.makeTimelinePage(
+                day: cached.date,
+                silenceGapSeconds: cached.silenceGapSeconds,
+                sourceItems: cached.items,
+                precomputedAggregates: cached.aggregates,
+                page: page,
+                pageSize: pageSize,
+                previewTextLimit: previewTextLimit,
+                kindFilter: kindFilter,
+                appFilter: appFilter,
+                searchQuery: searchQuery
             )
         }
 
-        let data = try Data(contentsOf: url)
-        return try TimelineQueryEngine.decodeTimelinePage(
-            from: data,
-            page: page,
-            pageSize: pageSize,
-            previewTextLimit: previewTextLimit,
-            kindFilter: kindFilter,
-            appFilter: appFilter,
-            searchQuery: searchQuery
+        let trimmedApp = appFilter?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activeApp = (trimmedApp?.isEmpty == false) ? trimmedApp : nil
+        return DailyTimelinePage(
+            date: day,
+            silenceGapSeconds: silenceGapSeconds,
+            items: [],
+            totalCount: 0,
+            dayTotalCount: 0,
+            kindCounts: [:],
+            appCounts: [:],
+            sortedApps: [],
+            activeKindFilter: kindFilter,
+            activeAppFilter: activeApp,
+            activeSearchQuery: searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
+            loadedCount: 0,
+            hasMore: false
         )
     }
 
@@ -167,17 +198,61 @@ actor TimelineStore {
         let sourceItems: [TimelineItem]
         if day == currentDay {
             sourceItems = flushedItemsForPreview()
+        } else if let cached = try loadCachedDay(for: day) {
+            sourceItems = cached.items
         } else {
-            let url = try fileURL(for: day)
-            guard fileManager.fileExists(atPath: url.path) else {
-                return target.text
-            }
-            let data = try Data(contentsOf: url)
-            let timeline = try decoder.decode(DailyTimeline.self, from: data)
-            sourceItems = timeline.items
+            return target.text
         }
 
         return TimelineQueryEngine.findFullText(in: sourceItems, matching: target)
+    }
+
+    private func loadCachedDay(for day: String) throws -> CachedDayTimeline? {
+        let url = try fileURL(for: day)
+        guard fileManager.fileExists(atPath: url.path) else {
+            dayCache.removeValue(forKey: day)
+            dayCacheOrder.removeAll { $0 == day }
+            return nil
+        }
+
+        let resourceValues = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let fileSize = resourceValues?.fileSize
+        let modDate = resourceValues?.contentModificationDate
+
+        if let existing = dayCache[day],
+           existing.fileSize == fileSize,
+           existing.modificationDate == modDate {
+            touchCacheOrder(day)
+            return existing
+        }
+
+        let data = try Data(contentsOf: url)
+        let timeline = try decoder.decode(DailyTimeline.self, from: data)
+        let aggregates = TimelineQueryEngine.computeDayAggregates(from: timeline.items)
+        let cached = CachedDayTimeline(
+            date: timeline.date,
+            silenceGapSeconds: timeline.silenceGapSeconds,
+            items: timeline.items,
+            aggregates: aggregates,
+            fileSize: fileSize,
+            modificationDate: modDate
+        )
+        dayCache[day] = cached
+        touchCacheOrder(day)
+        evictCacheIfNeeded()
+        return cached
+    }
+
+    private func touchCacheOrder(_ day: String) {
+        dayCacheOrder.removeAll { $0 == day }
+        dayCacheOrder.append(day)
+    }
+
+    private func evictCacheIfNeeded() {
+        while dayCacheOrder.count > maxCachedDays {
+            let evicted = dayCacheOrder.removeFirst()
+            dayCache.removeValue(forKey: evicted)
+        }
     }
 
     func storageDirectoryURL() throws -> URL {
@@ -214,6 +289,14 @@ actor TimelineStore {
         currentDay = day
         items = []
         pendingKeyboardSegment = nil
+        currentDayAggregates = nil
+
+        if let cached = dayCache.removeValue(forKey: day) {
+            dayCacheOrder.removeAll { $0 == day }
+            items = cached.items
+            currentDayAggregates = cached.aggregates
+            return
+        }
 
         let url = try fileURL(for: day)
         if fileManager.fileExists(atPath: url.path) {
@@ -261,6 +344,8 @@ actor TimelineStore {
 
     private func persistCurrentDay() throws {
         guard let currentDay else { return }
+        dayCache.removeValue(forKey: currentDay)
+        dayCacheOrder.removeAll { $0 == currentDay }
         let timeline = DailyTimeline(
             date: currentDay,
             silenceGapSeconds: silenceGapSeconds,

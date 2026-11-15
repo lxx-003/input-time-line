@@ -6,11 +6,9 @@ struct TimelineDetailHeaderCard: View {
 
     var body: some View {
         let header = TimelineFormatters.detailHeaderDisplay(timeline.date)
-        let sortedApps = timeline.appCounts
-            .sorted { lhs, rhs in
-                if lhs.value != rhs.value { return lhs.value > rhs.value }
-                return lhs.key < rhs.key
-            }
+        let isFiltered = timeline.activeKindFilter != nil ||
+            timeline.activeAppFilter != nil ||
+            !timeline.activeSearchQuery.isEmpty
 
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
@@ -30,20 +28,25 @@ struct TimelineDetailHeaderCard: View {
                         }
                     }
 
-                    if model.kindFilter != .all || model.selectedAppFilter != nil || !model.searchText.isEmpty {
-                        HStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        if isFiltered {
                             Text("已筛选出 \(timeline.totalCount) 条")
                                 .font(PlushTheme.rounded(11.5, weight: .medium).monospacedDigit())
                                 .foregroundStyle(PlushTheme.ink2)
 
                             Button("清除筛选") {
-                                withAnimation(PlushTheme.spring) {
-                                    model.clearFilters()
-                                }
+                                model.clearFilters()
                             }
                             .buttonStyle(.plain)
                             .font(PlushTheme.rounded(11.5, weight: .semibold))
                             .foregroundStyle(PlushTheme.selectA)
+                        } else {
+                            let summary = timeline.loadedCount < timeline.dayTotalCount
+                                ? "全部类型 · 已加载最新 \(timeline.loadedCount) / \(timeline.dayTotalCount) 条"
+                                : "全部类型 · 共 \(timeline.dayTotalCount) 条"
+                            Text(summary)
+                                .font(PlushTheme.rounded(11.5, weight: .medium).monospacedDigit())
+                                .foregroundStyle(PlushTheme.ink3)
                         }
                     }
                 }
@@ -69,27 +72,24 @@ struct TimelineDetailHeaderCard: View {
             }
 
             // Active Apps quick filter chips
-            if !sortedApps.isEmpty {
+            if !timeline.sortedApps.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(sortedApps.prefix(10), id: \.key) { appName, count in
+                        ForEach(timeline.sortedApps.prefix(10)) { appEntry in
+                            let appName = appEntry.name
                             let isSelected = model.selectedAppFilter?.caseInsensitiveCompare(appName) == .orderedSame
                             Button {
-                                withAnimation(PlushTheme.spring) {
-                                    model.toggleAppFilter(appName)
-                                }
+                                model.toggleAppFilter(appName)
                             } label: {
                                 HStack(spacing: 5) {
                                     if let icon = AppIconProvider.shared.icon(for: appName) {
                                         Image(nsImage: icon)
                                             .resizable()
-                                            .interpolation(.high)
                                             .frame(width: 13, height: 13)
-                                            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                                     }
                                     Text(appName)
                                         .font(PlushTheme.rounded(11.5, weight: .semibold))
-                                    Text("\(count)")
+                                    Text("\(appEntry.count)")
                                         .font(PlushTheme.rounded(10.5, weight: .semibold).monospacedDigit())
                                         .opacity(0.75)
                                 }

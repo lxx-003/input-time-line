@@ -198,12 +198,19 @@ enum TimelineFormatters {
     }
 
     private static func durationText(start: String?, end: String?) -> String? {
-        guard let start, let end,
-              let startDate = timestampParser.date(from: start),
-              let endDate = timestampParser.date(from: end) else {
+        guard let start, let end else { return nil }
+
+        let seconds: Int
+        if let startSec = fastTimestampEpochSeconds(start),
+           let endSec = fastTimestampEpochSeconds(end) {
+            seconds = endSec - startSec
+        } else if let startDate = timestampParser.date(from: start),
+                  let endDate = timestampParser.date(from: end) {
+            seconds = Int(endDate.timeIntervalSince(startDate).rounded())
+        } else {
             return nil
         }
-        let seconds = Int(endDate.timeIntervalSince(startDate).rounded())
+
         guard seconds >= 1 else { return nil }
         if seconds < 60 {
             return "\(seconds)s"
@@ -211,5 +218,42 @@ enum TimelineFormatters {
         let minutes = seconds / 60
         let rem = seconds % 60
         return rem == 0 ? "\(minutes)m" : "\(minutes)m\(rem)s"
+    }
+
+    private static func fastTimestampEpochSeconds(_ s: String) -> Int? {
+        // Fast ASCII parse for "yyyy-MM-dd HH:mm:ss" (19 bytes)
+        let bytes = Array(s.utf8)
+        guard bytes.count == 19,
+              bytes[4] == 45, bytes[7] == 45, bytes[10] == 32, bytes[13] == 58, bytes[16] == 58 else {
+            return nil
+        }
+
+        func digit(_ b: UInt8) -> Int? {
+            b >= 48 && b <= 57 ? Int(b - 48) : nil
+        }
+        func twoDigits(_ i: Int) -> Int? {
+            guard let a = digit(bytes[i]), let b = digit(bytes[i + 1]) else { return nil }
+            return a * 10 + b
+        }
+
+        guard let y1 = twoDigits(0), let y2 = twoDigits(2),
+              let month = twoDigits(5), let day = twoDigits(8),
+              let hour = twoDigits(11), let minute = twoDigits(14), let second = twoDigits(17) else {
+            return nil
+        }
+        let year = y1 * 100 + y2
+        guard (1...12).contains(month), (1...31).contains(day),
+              (0...23).contains(hour), (0...59).contains(minute), (0...59).contains(second) else {
+            return nil
+        }
+
+        // Howard Hinnant civil-from-days algorithm (accurate Gregorian day count)
+        let y = year - (month <= 2 ? 1 : 0)
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        let days = era * 146097 + doe - 719468
+        return ((days * 24 + hour) * 60 + minute) * 60 + second
     }
 }

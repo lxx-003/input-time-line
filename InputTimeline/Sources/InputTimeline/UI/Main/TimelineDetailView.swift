@@ -27,30 +27,47 @@ struct TimelineDetailView: View {
                     if timeline.items.isEmpty {
                         FilteredEmptyStateView(dayTotalCount: timeline.dayTotalCount)
                     } else {
-                        PlushScrollView {
-                            LazyVStack(spacing: 8) {
-                                ForEach(timeline.items) { entry in
-                                    TimelineCardView(
-                                        entry: entry,
-                                        searchQuery: model.searchText,
-                                        activeAppFilter: model.selectedAppFilter,
-                                        onCopy: { model.copyItemText(entry) },
-                                        onInspect: { model.inspectFullText(entry) },
-                                        onToggleAppFilter: { appName in
-                                            withAnimation(PlushTheme.spring) {
+                        ScrollViewReader { scrollProxy in
+                            PlushScrollView {
+                                LazyVStack(spacing: 8) {
+                                    Color.clear
+                                        .frame(height: 0)
+                                        .id("timeline-top")
+
+                                    ForEach(timeline.items) { entry in
+                                        let isFilteredApp: Bool = {
+                                            guard let activeApp = model.selectedAppFilter,
+                                                  let entryApp = entry.item.appName,
+                                                  !entryApp.isEmpty else {
+                                                return false
+                                            }
+                                            return activeApp.caseInsensitiveCompare(entryApp) == .orderedSame
+                                        }()
+
+                                        TimelineCardView(
+                                            entry: entry,
+                                            searchQuery: timeline.activeSearchQuery,
+                                            isFilteredApp: isFilteredApp,
+                                            onCopy: { model.copyItemText(entry) },
+                                            onInspect: { model.inspectFullText(entry) },
+                                            onToggleAppFilter: { appName in
                                                 model.toggleAppFilter(appName)
                                             }
-                                        }
-                                    )
-                                }
+                                        )
+                                        .equatable()
+                                    }
 
-                                if timeline.hasMore {
-                                    loadMoreRow(timeline: timeline)
+                                    if timeline.hasMore {
+                                        loadMoreRow(timeline: timeline)
+                                    }
                                 }
+                                .padding(.horizontal, 22)
+                                .padding(.top, 4)
+                                .padding(.bottom, 26)
                             }
-                            .padding(.horizontal, 22)
-                            .padding(.top, 4)
-                            .padding(.bottom, 26)
+                            .onChange(of: timelineFilterResetKey(timeline)) { _ in
+                                scrollProxy.scrollTo("timeline-top", anchor: .top)
+                            }
                         }
                     }
                 } else if !model.permissionGranted {
@@ -215,6 +232,10 @@ struct TimelineDetailView: View {
             RoundedRectangle(cornerRadius: PlushTheme.Radius.row, style: .continuous)
                 .fill(PlushTheme.warning.opacity(0.12))
         )
+    }
+
+    private func timelineFilterResetKey(_ timeline: DailyTimelinePage) -> String {
+        "\(timeline.date)|\(timeline.activeKindFilter?.rawValue ?? "")|\(timeline.activeAppFilter ?? "")|\(timeline.activeSearchQuery)"
     }
 
     private func loadMoreRow(timeline: DailyTimelinePage) -> some View {

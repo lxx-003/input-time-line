@@ -12,54 +12,38 @@ extension AppModel {
         model.groupedDaySections = TimelineFormatters.groupDays(model.availableDays)
         model.selectedDay = "2026-11-13"
 
-        let sampleItems: [TimelineDisplayItem] = [
-            TimelineDisplayItem(
-                id: UUID(),
-                item: TimelineItem(
-                    kind: .keyboard,
-                    start: "2026-11-13 14:32:10",
-                    end: "2026-11-13 14:32:24",
-                    appName: "Cursor",
-                    text: "重构 ContentView 的时间线卡片样式，加上应用图标和工具栏筛选\r"
-                ),
-                originalCharacterCount: 38,
-                isTruncated: false
+        let rawItems: [TimelineItem] = [
+            TimelineItem(
+                kind: .keyboard,
+                start: "2026-11-13 14:32:10",
+                end: "2026-11-13 14:32:24",
+                appName: "Cursor",
+                text: "重构 ContentView 的时间线卡片样式，加上应用图标和工具栏筛选\r"
             ),
-            TimelineDisplayItem(
-                id: UUID(),
-                item: TimelineItem(
-                    kind: .copy,
-                    at: "2026-11-13 14:28:03",
-                    appName: "Safari",
-                    text: "NavigationSplitView {\n    SidebarView()\n} detail: {\n    TimelineDetailView()\n}"
-                ),
-                originalCharacterCount: 78,
-                isTruncated: false
+            TimelineItem(
+                kind: .copy,
+                at: "2026-11-13 14:28:03",
+                appName: "Safari",
+                text: "NavigationSplitView {\n    SidebarView()\n} detail: {\n    TimelineDetailView()\n}"
             ),
-            TimelineDisplayItem(
-                id: UUID(),
-                item: TimelineItem(
-                    kind: .paste,
-                    at: "2026-11-13 14:28:09",
-                    appName: "Cursor",
-                    text: "NavigationSplitView {\n    SidebarView()\n} detail: {\n    TimelineDetailView()\n}"
-                ),
-                originalCharacterCount: 78,
-                isTruncated: false
+            TimelineItem(
+                kind: .paste,
+                at: "2026-11-13 14:28:09",
+                appName: "Cursor",
+                text: "NavigationSplitView {\n    SidebarView()\n} detail: {\n    TimelineDetailView()\n}"
             ),
-            TimelineDisplayItem(
-                id: UUID(),
-                item: TimelineItem(
-                    kind: .keyboard,
-                    start: "2026-11-13 14:15:02",
-                    end: "2026-11-13 14:15:18",
-                    appName: "Safari",
-                    text: "macOS SwiftUI NavigationSplitView toolbar searchable design"
-                ),
-                originalCharacterCount: 59,
-                isTruncated: false
+            TimelineItem(
+                kind: .keyboard,
+                start: "2026-11-13 14:15:02",
+                end: "2026-11-13 14:15:18",
+                appName: "Safari",
+                text: "macOS SwiftUI NavigationSplitView toolbar searchable design"
             )
         ]
+
+        let sampleItems = rawItems.map {
+            TimelineQueryEngine.makeDisplayItem(from: $0, limit: Paging.previewTextLimit)
+        }
 
         model.recentMenuBarDay = "2026-11-13"
         model.recentMenuBarItems = sampleItems
@@ -71,6 +55,13 @@ extension AppModel {
             dayTotalCount: 24,
             kindCounts: [.keyboard: 15, .copy: 5, .paste: 4],
             appCounts: ["Cursor": 14, "Safari": 10],
+            sortedApps: [
+                TimelineAppCount(name: "Cursor", count: 14),
+                TimelineAppCount(name: "Safari", count: 10)
+            ],
+            activeKindFilter: nil,
+            activeAppFilter: nil,
+            activeSearchQuery: "",
             loadedCount: 4,
             hasMore: true
         )

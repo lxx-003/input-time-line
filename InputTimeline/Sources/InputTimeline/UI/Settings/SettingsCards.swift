@@ -77,7 +77,6 @@ struct PrivacyExclusionsCard: View {
                                     Image(nsImage: icon)
                                         .resizable()
                                         .frame(width: 13, height: 13)
-                                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                                 }
                                 Text(appName)
                                     .font(PlushTheme.rounded(12, weight: .semibold))

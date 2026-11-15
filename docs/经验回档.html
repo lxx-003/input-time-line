@@ -580,6 +580,38 @@
           ]},
           { label: "代码位置", type: "text", content: "<code>InputTimeline/scripts/build-app.sh</code>、<code>InputTimeline/scripts/open-app.sh</code>。" }
         ]
+      },
+      {
+        id: 9,
+        title: "标签切换与长列表滑动卡顿二次治理：隔离分段动画、消灭 textSelection(.enabled) 与控制符内联附件爆炸",
+        date: "2026-11-15",
+        time: "22:28",
+        detailed: true,
+        tags: ["SwiftUI", "Performance", "LazyVStack", "textSelection", "Animation", "Cache"],
+        sections: [
+          { label: "现象", type: "list", items: [
+            "点击顶部「全部 / 键盘 / 复制 / 粘贴」分段胶囊切换筛选时，胶囊滑动与列表切换明显卡顿掉帧。",
+            "在右侧时间线列表上下滚动时仍有顿挫感，尤其在连续经过键盘输入记录卡片时掉帧更明显。"
+          ]},
+          { label: "深层根因排查", type: "list", items: [
+            "<strong>1. 分段控件 <code>withAnimation</code> 泄漏全局事务：</strong><code>PlushSegmentedTabs</code> 点击时用 <code>withAnimation(PlushTheme.spring)</code> 直接包裹外部 <code>@Binding</code> 赋值，导致 <code>TimelineDetailHeaderCard</code> 的「已筛选出 N 条」副标题行出现/消失时高度跳变，拖拽着下方的 <code>PlushScrollView</code> 连续重排；而异步查询 <code>selectedTimeline</code> 稍后到达又在动画中途同步替换 30 张卡片，直接打断胶囊滑动。",
+            "<strong>2. 列表每张卡片都挂了 <code>.textSelection(.enabled)</code>：</strong>macOS SwiftUI 在 <code>ScrollView + LazyVStack</code> 中会对每个启用 <code>textSelection</code> 的 <code>Text</code> 维护 AppKit 文本选择宿主与排版状态，快速滚动和切换标签批量替换卡片时会产生显著主线程开销。",
+            "<strong>3. 控制符内联 <code>Image(systemName:)</code> 附件过多 + 热路径重算：</strong>实测当天 692 条记录中 463 条（67%）包含控制字符，单条最多有 50 个控制符；<code>formattedRichText</code> 每次渲染都用 <code>Array(normalized)</code> 拆字符并拼接数十个 <code>Text(Image(systemName:))</code>。同时滚动时指针划过卡片触发 <code>isHovered</code> 变更，不仅在结构上增删按钮，还反复触发 <code>DateFormatter</code> 解析与 <code>blankPlaceholder</code> 全串格式化。",
+            "<strong>4. 历史日期重复读盘解码 + 图标高开销下采样：</strong>历史日期每次切换标签都会重新读取整天 JSON 并用 <code>JSONDecoder</code> 解码生成新 <code>UUID</code>；<code>AppIconProvider</code> 缓存的大尺寸图标每次绘制都要 <code>.interpolation(.high)</code> 缩放与裁剪。"
+          ]},
+          { label: "最终解法", type: "list", items: [
+            "<strong>预计算展示快照：</strong>在 <code>TimelineDisplayItem</code> 与 <code>TimelineQueryEngine</code> 中后台一次性预计算时间标签（<code>fastTimestampEpochSeconds</code> 纯 ASCII 解析替代 <code>DateFormatter</code>）、零分配早退判空、控制符 <code>AttributedString</code>（统一用 <code>↩ ⇥ ⌫ ⌦ ⎋ ← → ↑ ↓</code> 配合 <code>PlushTheme.ink3</code> 渲染替代海量内联图片附件）以及 <code>sortedApps</code> 排序列表。",
+            "<strong>按日 LRU 缓存与稳定 ID：</strong>在 <code>TimelineStore</code> 为最近查看的 8 个历史日期建立内存缓存（基于文件大小与修改时间校验一致性），并缓存当天聚合统计，切换标签直接内存筛选，<code>UUID</code> 保持稳定。",
+            "<strong>列表卡片轻量化与 <code>Equatable</code>：</strong>移除滚动卡片上的 <code>.textSelection(.enabled)</code>（保留完整全文弹窗 <code>TimelineDetailSheet</code> 内划选，且所有非空卡片均可右键「查看全文」）；卡片正文拆为 <code>TimelineCardContent: Equatable</code>，悬停按钮改为顶角 <code>.overlay(alignment: .topTrailing)</code>；<code>AppIconProvider</code> 预渲染 <code>32×32px</code>（<code>16pt @2x</code>）圆角缩略图。",
+            "<strong>动画事务隔离与头部稳态：</strong><code>PlushSegmentedTabs</code> 改用作用域仅限内部胶囊的 <code>.animation(PlushTheme.spring, value: selection)</code>；<code>TimelineDetailHeaderCard</code> 固定副标题行占位并读取页面快照内的筛选状态，消除高度跳变与计数闪烁；切换筛选时通过 <code>ScrollViewReader</code> 回到顶部，并减少 <code>WindowStyleConfigurator</code> / <code>PlushScrollView</code> 的冗余更新。"
+          ]},
+          { label: "可复用原则", type: "list", items: [
+            "<strong>不要用全局 <code>withAnimation</code> 直接包裹会触发异步列表替换的外部 <code>@Binding</code>。</strong>动效作用域必须收敛在触发该动效的控件内部。",
+            "<strong>macOS SwiftUI 长列表（<code>LazyVStack</code>）谨慎使用 <code>.textSelection(.enabled)</code> 与海量内联 <code>Image</code> 文本拼接</strong>，划选需求可下沉到详情弹窗，列表文本与富文本属性应在后台线程预构建。",
+            "<strong>不要让滚动列表中的 <code>@State isHovered</code> 直接触发正文排版重算或行内结构增删</strong>，将静态内容拆成 <code>Equatable</code> 子视图并用 <code>overlay</code> 承接悬浮操作。"
+          ]},
+          { label: "代码位置", type: "text", content: "<code>TimelineModels.swift</code>、<code>TimelineQueryEngine.swift</code>、<code>TimelineStore.swift</code>、<code>TimelineFormatters.swift</code>、<code>TimelineTextFormatters.swift</code>、<code>AppIconProvider.swift</code>、<code>TimelineCardView.swift</code>、<code>TimelineDetailHeaderCard.swift</code>、<code>TimelineDetailView.swift</code>、<code>PlushControls.swift</code>。" }
+        ]
       }
     ];
 

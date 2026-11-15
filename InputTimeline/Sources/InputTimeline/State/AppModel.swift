@@ -269,6 +269,10 @@ final class AppModel: ObservableObject {
                     dayTotalCount: loadedPage.dayTotalCount,
                     kindCounts: loadedPage.kindCounts,
                     appCounts: loadedPage.appCounts,
+                    sortedApps: loadedPage.sortedApps,
+                    activeKindFilter: loadedPage.activeKindFilter,
+                    activeAppFilter: loadedPage.activeAppFilter,
+                    activeSearchQuery: loadedPage.activeSearchQuery,
                     loadedCount: mergedItems.count,
                     hasMore: loadedPage.hasMore
                 )
