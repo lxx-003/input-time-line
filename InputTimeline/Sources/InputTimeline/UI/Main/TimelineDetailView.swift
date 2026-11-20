@@ -13,13 +13,15 @@ struct TimelineDetailView: View {
                     .padding(.top, 36)
                     .padding(.bottom, 12)
 
-                if (!model.permissionGranted || model.tapCreationFailed) && model.selectedTimeline != nil {
+                if model.activeMainTab != .settings && (!model.permissionGranted || model.tapCreationFailed) && model.selectedTimeline != nil {
                     compactPermissionStrip
                         .padding(.horizontal, 22)
                         .padding(.bottom, 12)
                 }
 
-                if model.activeMainTab == .insights,
+                if model.activeMainTab == .settings {
+                    SettingsView()
+                } else if model.activeMainTab == .insights,
                    (model.permissionGranted || !model.availableDays.isEmpty),
                    let insights = model.selectedInsights {
                     InsightsDashboardView(insights: insights)
@@ -118,76 +120,93 @@ struct TimelineDetailView: View {
         ]
 
         return HStack(spacing: 12) {
-            PlushSegmentedTabs(
-                options: mainTabOptions,
-                selection: Binding(
-                    get: { model.activeMainTab },
-                    set: { model.setMainTab($0) }
-                )
-            )
-
-            Spacer(minLength: 8)
-
-            if model.activeMainTab == .timeline {
-                // Plush Pill Search Field (shadow only on background capsule)
-                HStack(spacing: 7) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(PlushTheme.ink2)
-
-                    TextField(
-                        "搜索文本或应用 (⌘F)",
-                        text: Binding(
-                            get: { model.searchText },
-                            set: { model.handleSearchTextChange($0) }
-                        )
-                    )
-                    .textFieldStyle(.plain)
-                    .font(PlushTheme.rounded(12.5, weight: .medium))
-                    .foregroundStyle(PlushTheme.ink)
-                    .focused($isSearchFocused)
-
-                    if !model.searchText.isEmpty {
-                        Button {
-                            model.handleSearchTextChange("")
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .buttonStyle(PlushCircleIconButtonStyle(diameter: 18, variant: .secondary))
+            if model.activeMainTab == .settings {
+                Button {
+                    model.closeSettings()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(model.lastNonSettingsTab == .insights ? "返回统计洞察" : "返回时间线")
                     }
                 }
-                .padding(.horizontal, 12)
-                .frame(width: 230, height: 34)
-                .background(
-                    Capsule()
-                        .fill(PlushTheme.surface)
-                        .plushSoftShadow()
+                .buttonStyle(PlushPillButtonStyle(variant: .surface, size: .sm))
+                .help("返回上一视图")
+
+                Spacer(minLength: 8)
+            } else {
+                PlushSegmentedTabs(
+                    options: mainTabOptions,
+                    selection: Binding(
+                        get: { model.activeMainTab },
+                        set: { model.setMainTab($0) }
+                    )
                 )
-            }
 
-            Button {
-                model.refreshAll(showFeedback: true)
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .buttonStyle(PlushCircleIconButtonStyle(diameter: 34, variant: .surface))
-            .help("刷新时间线 (⌘R)")
+                Spacer(minLength: 8)
 
-            Button {
-                model.exportSelectedDay()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 11.5, weight: .semibold))
-                    Text("导出")
+                if model.activeMainTab == .timeline {
+                    // Plush Pill Search Field (shadow only on background capsule)
+                    HStack(spacing: 7) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(PlushTheme.ink2)
+
+                        TextField(
+                            "搜索文本或应用 (⌘F)",
+                            text: Binding(
+                                get: { model.searchText },
+                                set: { model.handleSearchTextChange($0) }
+                            )
+                        )
+                        .textFieldStyle(.plain)
+                        .font(PlushTheme.rounded(12.5, weight: .medium))
+                        .foregroundStyle(PlushTheme.ink)
+                        .focused($isSearchFocused)
+
+                        if !model.searchText.isEmpty {
+                            Button {
+                                model.handleSearchTextChange("")
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .buttonStyle(PlushCircleIconButtonStyle(diameter: 18, variant: .secondary))
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(width: 230, height: 34)
+                    .background(
+                        Capsule()
+                            .fill(PlushTheme.surface)
+                            .plushSoftShadow()
+                    )
                 }
+
+                Button {
+                    model.refreshAll(showFeedback: true)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(PlushCircleIconButtonStyle(diameter: 34, variant: .surface))
+                .help("刷新时间线 (⌘R)")
+
+                Button {
+                    model.exportSelectedDay()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 11.5, weight: .semibold))
+                        Text("导出")
+                    }
+                }
+                .buttonStyle(PlushPillButtonStyle(variant: .surface, size: .sm))
+                .disabled(model.selectedDay == nil)
+                .help("导出当前日期 JSON")
             }
-            .buttonStyle(PlushPillButtonStyle(variant: .surface, size: .sm))
-            .disabled(model.selectedDay == nil)
-            .help("导出当前日期 JSON")
         }
+        .frame(minHeight: 34)
     }
 
     private func kindFilterBar(timeline: DailyTimelinePage) -> some View {

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TimelineSidebarView: View {
     @EnvironmentObject private var model: AppModel
-    @Environment(\.openAppSettings) private var openAppSettings
 
     var body: some View {
         VStack(spacing: 12) {
@@ -143,14 +142,14 @@ struct TimelineSidebarView: View {
                 )
             }
 
-            if model.isRecording {
-                HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                if model.isRecording {
                     Menu {
                         Button("暂停 15 分钟") { model.pauseTemporarily(minutes: 15) }
                         Button("暂停 30 分钟") { model.pauseTemporarily(minutes: 30) }
                         Button("暂停 1 小时") { model.pauseTemporarily(minutes: 60) }
                         Divider()
-                        Button("打开设置...") { openAppSettings() }
+                        Button("打开设置...") { model.openSettings() }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "timer")
@@ -167,19 +166,28 @@ struct TimelineSidebarView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
-
-                    Spacer()
-
-                    Button {
-                        openAppSettings()
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(PlushTheme.ink2)
-                    }
-                    .buttonStyle(PlushCircleIconButtonStyle(diameter: 24, variant: .secondary))
-                    .help("打开设置 (⌘,)")
+                } else {
+                    Text("偏好设置")
+                        .font(PlushTheme.rounded(11, weight: .medium))
+                        .foregroundStyle(PlushTheme.ink3)
+                        .padding(.leading, 2)
                 }
+
+                Spacer()
+
+                let isSettingsActive = model.activeMainTab == .settings
+                Button {
+                    model.toggleSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(isSettingsActive ? PlushTheme.onAccent : PlushTheme.ink2)
+                }
+                .buttonStyle(PlushCircleIconButtonStyle(
+                    diameter: 24,
+                    variant: isSettingsActive ? .primary : .secondary
+                ))
+                .help(isSettingsActive ? "返回上一视图" : "打开设置 (⌘,)")
             }
         }
         .padding(12)

@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     @Published var launchAtLogin = LaunchAtLoginManager.preferenceEnabled
     @Published var statusMessage = RecordingPreference.enabled ? "记录开启中" : "记录已暂停"
     @Published var activeMainTab: MainContentTab = .timeline
+    var lastNonSettingsTab: MainContentTab = .timeline
     @Published var insightsRange: InsightsDateRange = .forPreset(.today)
     @Published var kindFilter: TimelineKindFilter = .all
     @Published var selectedAppFilter: String?

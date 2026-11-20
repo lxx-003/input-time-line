@@ -1,104 +1,46 @@
-import AppKit
 import SwiftUI
-
-struct OpenAppSettingsAction: Sendable {
-    private let handler: @MainActor @Sendable () -> Void
-
-    init(handler: @escaping @MainActor @Sendable () -> Void) {
-        self.handler = handler
-    }
-
-    @MainActor
-    func callAsFunction() {
-        handler()
-    }
-}
-
-private struct OpenAppSettingsKey: EnvironmentKey {
-    static let defaultValue = OpenAppSettingsAction {
-        SettingsNavigator.openLegacy()
-    }
-}
-
-extension EnvironmentValues {
-    var openAppSettings: OpenAppSettingsAction {
-        get { self[OpenAppSettingsKey.self] }
-        set { self[OpenAppSettingsKey.self] = newValue }
-    }
-}
-
-@available(macOS 14.0, *)
-private struct OpenSettingsBridgeModifier: ViewModifier {
-    @Environment(\.openSettings) private var openSettings
-
-    func body(content: Content) -> some View {
-        content.environment(
-            \.openAppSettings,
-            OpenAppSettingsAction {
-                NSApp.activate(ignoringOtherApps: true)
-                openSettings()
-                DispatchQueue.main.async {
-                    NSApp.activate(ignoringOtherApps: true)
-                    if let settingsWindow = NSApp.windows.first(where: {
-                        $0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true
-                    }) {
-                        settingsWindow.makeKeyAndOrderFront(nil)
-                    }
-                }
-            }
-        )
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func installSettingsOpener() -> some View {
-        if #available(macOS 14.0, *) {
-            modifier(OpenSettingsBridgeModifier())
-        } else {
-            self
-        }
-    }
-}
-
-enum SettingsNavigator {
-    @MainActor
-    static func openLegacy() {
-        NSApp.activate(ignoringOtherApps: true)
-        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
-    }
-}
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         PlushScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("偏好设置")
-                            .font(PlushTheme.rounded(20, weight: .semibold))
-                            .foregroundStyle(PlushTheme.ink)
-                        Text("所有记录均仅存于本地，可按需配置分段、隐私排除与系统集成。")
-                            .font(PlushTheme.rounded(12))
-                            .foregroundStyle(PlushTheme.ink2)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 4)
-
+            VStack(alignment: .leading, spacing: 12) {
+                headerCard
                 CaptureSettingsCard()
                 PrivacyExclusionsCard()
                 SystemStorageCard()
             }
-            .padding(20)
+            .padding(.horizontal, 22)
+            .padding(.top, 4)
+            .padding(.bottom, 26)
         }
-        .background(PlushTheme.panel)
-        .frame(width: 560, height: 560)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var headerCard: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("偏好设置")
+                    .font(PlushTheme.rounded(20, weight: .semibold))
+                    .foregroundStyle(PlushTheme.ink)
+                Text("所有记录均仅存于本地，可按需配置分段、隐私排除与系统集成。")
+                    .font(PlushTheme.rounded(12))
+                    .foregroundStyle(PlushTheme.ink2)
+            }
+
+            Spacer(minLength: 8)
+
+            PlushStatusBadge(
+                title: model.isRecording ? "采集中" : "已暂停",
+                dotColor: (!model.permissionGranted || model.tapCreationFailed)
+                    ? PlushTheme.warning
+                    : (model.isRecording ? PlushTheme.success : PlushTheme.ink3),
+                isActive: model.isRecording && model.permissionGranted && !model.tapCreationFailed
+            )
+        }
+        .padding(18)
+        .plushCardSurface(cornerRadius: PlushTheme.Radius.card, background: PlushTheme.surface)
     }
 }
 

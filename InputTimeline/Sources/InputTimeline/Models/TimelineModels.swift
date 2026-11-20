@@ -71,6 +71,7 @@ struct DailyTimeline: Codable, Hashable {
 enum MainContentTab: String, CaseIterable, Identifiable, Hashable {
     case timeline = "时间线"
     case insights = "统计洞察"
+    case settings = "偏好设置"
 
     var id: String { rawValue }
 }

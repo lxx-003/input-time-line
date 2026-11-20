@@ -21,10 +21,9 @@ struct InputTimelineApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        WindowGroup("Input Timeline", id: "main") {
+        Window("Input Timeline", id: "main") {
             ContentView()
                 .environmentObject(model)
-                .installSettingsOpener()
                 .onAppear {
                     appDelegate.model = model
                     model.start()
@@ -33,6 +32,15 @@ struct InputTimelineApp: App {
         .defaultSize(width: 1120, height: 740)
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("偏好设置...") {
+                    openWindow(id: "main")
+                    NSApp.activate(ignoringOtherApps: true)
+                    model.openSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
             CommandGroup(after: .toolbar) {
                 Button("刷新时间线") {
                     model.refreshAll(showFeedback: true)
@@ -41,18 +49,19 @@ struct InputTimelineApp: App {
             }
         }
 
-        Settings {
-            SettingsView()
-                .environmentObject(model)
-        }
-
         MenuBarExtra {
-            MenuBarContentView(openMainWindow: {
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
-            })
+            MenuBarContentView(
+                openMainWindow: {
+                    openWindow(id: "main")
+                    NSApp.activate(ignoringOtherApps: true)
+                },
+                openSettings: {
+                    openWindow(id: "main")
+                    NSApp.activate(ignoringOtherApps: true)
+                    model.openSettings()
+                }
+            )
             .environmentObject(model)
-            .installSettingsOpener()
         } label: {
             Image(systemName: model.isRecording ? "keyboard.fill" : "keyboard")
                 .help(model.isRecording ? "InputTimeline：正在记录" : "InputTimeline：已暂停")

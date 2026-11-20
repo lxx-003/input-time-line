@@ -4,6 +4,9 @@ import SwiftUI
 
 extension AppModel {
     func selectDay(_ day: String) {
+        if activeMainTab == .settings {
+            activeMainTab = lastNonSettingsTab
+        }
         selectedDay = day
         currentPage = 0
         selectedAppFilter = nil
@@ -19,6 +22,9 @@ extension AppModel {
     }
 
     func setMainTab(_ tab: MainContentTab) {
+        if tab != .settings {
+            lastNonSettingsTab = tab
+        }
         guard activeMainTab != tab else { return }
         activeMainTab = tab
         guard tab == .insights else { return }
@@ -31,6 +37,26 @@ extension AppModel {
             Task {
                 await loadInsights(for: target)
             }
+        }
+    }
+
+    func openSettings() {
+        if activeMainTab != .settings {
+            lastNonSettingsTab = activeMainTab
+        }
+        activeMainTab = .settings
+    }
+
+    func closeSettings() {
+        guard activeMainTab == .settings else { return }
+        setMainTab(lastNonSettingsTab)
+    }
+
+    func toggleSettings() {
+        if activeMainTab == .settings {
+            closeSettings()
+        } else {
+            openSettings()
         }
     }
 
