@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TimelineSidebarView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openAppSettings) private var openAppSettings
 
     var body: some View {
         VStack(spacing: 12) {
@@ -149,7 +150,7 @@ struct TimelineSidebarView: View {
                         Button("暂停 30 分钟") { model.pauseTemporarily(minutes: 30) }
                         Button("暂停 1 小时") { model.pauseTemporarily(minutes: 60) }
                         Divider()
-                        Button("打开设置...") { SettingsNavigator.open() }
+                        Button("打开设置...") { openAppSettings() }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "timer")
@@ -170,7 +171,7 @@ struct TimelineSidebarView: View {
                     Spacer()
 
                     Button {
-                        SettingsNavigator.open()
+                        openAppSettings()
                     } label: {
                         Image(systemName: "gearshape")
                             .font(.system(size: 11, weight: .semibold))

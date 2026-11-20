@@ -1,16 +1,72 @@
 import AppKit
 import SwiftUI
 
+struct OpenAppSettingsAction: Sendable {
+    private let handler: @MainActor @Sendable () -> Void
+
+    init(handler: @escaping @MainActor @Sendable () -> Void) {
+        self.handler = handler
+    }
+
+    @MainActor
+    func callAsFunction() {
+        handler()
+    }
+}
+
+private struct OpenAppSettingsKey: EnvironmentKey {
+    static let defaultValue = OpenAppSettingsAction {
+        SettingsNavigator.openLegacy()
+    }
+}
+
+extension EnvironmentValues {
+    var openAppSettings: OpenAppSettingsAction {
+        get { self[OpenAppSettingsKey.self] }
+        set { self[OpenAppSettingsKey.self] = newValue }
+    }
+}
+
+@available(macOS 14.0, *)
+private struct OpenSettingsBridgeModifier: ViewModifier {
+    @Environment(\.openSettings) private var openSettings
+
+    func body(content: Content) -> some View {
+        content.environment(
+            \.openAppSettings,
+            OpenAppSettingsAction {
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
+                DispatchQueue.main.async {
+                    NSApp.activate(ignoringOtherApps: true)
+                    if let settingsWindow = NSApp.windows.first(where: {
+                        $0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true
+                    }) {
+                        settingsWindow.makeKeyAndOrderFront(nil)
+                    }
+                }
+            }
+        )
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func installSettingsOpener() -> some View {
+        if #available(macOS 14.0, *) {
+            modifier(OpenSettingsBridgeModifier())
+        } else {
+            self
+        }
+    }
+}
+
 enum SettingsNavigator {
     @MainActor
-    static func open() {
+    static func openLegacy() {
         NSApp.activate(ignoringOtherApps: true)
-        if #available(macOS 14.0, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
-                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-            }
+        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
         }
     }
 }

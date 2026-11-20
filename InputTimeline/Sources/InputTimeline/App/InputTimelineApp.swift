@@ -24,6 +24,7 @@ struct InputTimelineApp: App {
         WindowGroup("Input Timeline", id: "main") {
             ContentView()
                 .environmentObject(model)
+                .installSettingsOpener()
                 .onAppear {
                     appDelegate.model = model
                     model.start()
@@ -51,6 +52,7 @@ struct InputTimelineApp: App {
                 NSApp.activate(ignoringOtherApps: true)
             })
             .environmentObject(model)
+            .installSettingsOpener()
         } label: {
             Image(systemName: model.isRecording ? "keyboard.fill" : "keyboard")
                 .help(model.isRecording ? "InputTimeline：正在记录" : "InputTimeline：已暂停")

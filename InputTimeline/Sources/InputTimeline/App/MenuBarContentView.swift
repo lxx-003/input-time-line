@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MenuBarContentView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openAppSettings) private var openAppSettings
     @State private var copiedID: UUID?
     let openMainWindow: () -> Void
 
@@ -123,7 +124,7 @@ struct MenuBarContentView: View {
                 .buttonStyle(PlushPillButtonStyle(variant: .primary, size: .sm))
 
                 Button {
-                    SettingsNavigator.open()
+                    openAppSettings()
                 } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 12.5, weight: .semibold))
